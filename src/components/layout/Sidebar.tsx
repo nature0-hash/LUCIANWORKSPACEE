@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { FolderKanban, Home, X } from "lucide-react";
+import { Code2, Home, X } from "lucide-react";
 import { BrandMark } from "@/components/branding/BrandMark";
 import { IconButton } from "@/components/ui/IconButton";
 import {
@@ -13,12 +13,13 @@ import { useSidebar } from "@/components/layout/SidebarContext";
 /**
  * Sidebar navigation items.
  *
- * Phase 2 deliberately keeps this minimal — only Home and Projects.
- * Future phases will add more items as real features land.
+ * Phase 4 introduces DevWorkspace — the in-browser IDE with Project
+ * Library, Workspace (file explorer + Monaco editor + live preview), and
+ * Code Converter.
  */
 const NAV_ITEMS: NavItem[] = [
   { id: "home", href: "/", label: "Home", icon: Home },
-  { id: "projects", href: "/projects", label: "Projects", icon: FolderKanban },
+  { id: "dev-workspace", href: "/dev-workspace", label: "DevWorkspace", icon: Code2 },
 ];
 
 /**

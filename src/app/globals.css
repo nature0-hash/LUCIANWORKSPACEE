@@ -258,6 +258,98 @@
   --color-accent-active: var(--accent-active);
   --color-accent-fg: var(--accent-fg);
   --shadow-pop: var(--shadow);
+
+  /* ---------------------------------------------------------------- */
+  /* shadcn-compat aliases — map shadcn-style CSS variables to my      */
+  /* LUCIAN tokens so ported shadcn UI primitives render with the      */
+  /* current theme + accent automatically.                             */
+  /*                                                                  */
+  /* NOTE on the `accent` collision:                                   */
+  /*   - shadcn's `--accent` is a SUBTLE GRAY HOVER background         */
+  /*     (used by ghost/outline buttons, dropdown hovers, etc.)        */
+  /*   - LUCIAN's `--accent` is the COLOR ACCENT (gold/emerald/etc.)   */
+  /*     used for primary actions, focus rings, active nav.            */
+  /*   - These are different concepts that happen to share a name.     */
+  /*   - Resolution: shadcn's `--accent` aliases to my `--hover-bg`   */
+  /*     (which IS the subtle gray hover shadcn intended).             */
+  /*   - My own `--accent` (the color accent) stays as the source.    */
+  /* ---------------------------------------------------------------- */
+
+  /* shadcn `bg-background`, `text-foreground` → LUCIAN canvas + fg */
+  --color-background: var(--canvas);
+  --color-foreground: var(--fg);
+
+  /* shadcn `bg-card`, `text-card-foreground` → LUCIAN surface + fg */
+  --color-card: var(--surface);
+  --color-card-foreground: var(--fg);
+
+  /* shadcn `bg-popover`, `text-popover-foreground` → LUCIAN overlay + fg */
+  --color-popover: var(--overlay);
+  --color-popover-foreground: var(--fg);
+
+  /* shadcn `bg-primary`, `text-primary-foreground` → LUCIAN color accent */
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-fg);
+
+  /* shadcn `bg-secondary`, `text-secondary-foreground` → LUCIAN surface-2 + muted */
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--fg-muted);
+
+  /* shadcn `bg-muted`, `text-muted-foreground` → LUCIAN surface-2 + muted */
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--fg-muted);
+
+  /* shadcn `bg-accent`, `text-accent-foreground` (subtle hover) → LUCIAN hover-bg + fg */
+  --color-accent: var(--hover-bg);
+  --color-accent-foreground: var(--fg);
+
+  /* shadcn `bg-destructive` → LUCIAN color accent (we don't have a destructive color) */
+  --color-destructive: var(--accent);
+  --color-destructive-foreground: var(--accent-fg);
+
+  /* shadcn `border-input`, `border-border` → LUCIAN line */
+  --color-border: var(--line);
+  --color-input: var(--line);
+
+  /* shadcn `ring-ring` (focus ring color) → LUCIAN color accent */
+  --color-ring: var(--accent);
+
+  /* Radius + chart tokens (chart-* are used by recharts but we don't use them) */
+  --radius: 0.5rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* shadcn-compat: raw CSS variable aliases                             */
+/* ------------------------------------------------------------------ */
+/* The @theme inline block above exposes Tailwind utility classes       */
+/* (bg-background, text-primary, etc.). Some shadcn primitives also    */
+/* reference the underlying CSS variables directly via var(--accent), */
+/* var(--primary), etc. — those need plain CSS aliases too.            */
+/* ------------------------------------------------------------------ */
+
+:root,
+[data-theme] {
+  --background: var(--canvas);
+  --foreground: var(--fg);
+  --card: var(--surface);
+  --card-foreground: var(--fg);
+  --popover: var(--overlay);
+  --popover-foreground: var(--fg);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-fg);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--fg-muted);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--fg-muted);
+  /* IMPORTANT: shadcn's --accent (subtle hover) — different concept from
+     my LUCIAN --accent (color accent). Keep them distinct. */
+  --shadcn-accent: var(--hover-bg);
+  --shadcn-accent-foreground: var(--fg);
+  --destructive: var(--accent);
+  --destructive-foreground: var(--accent-fg);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--accent);
 }
 
 /* ------------------------------------------------------------------ */

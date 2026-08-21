@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { Toaster as ShadcnToaster } from "@/components/ui-devspace/toaster";
+import { Toaster as SonnerToaster } from "sonner";
 import {
   ACCENT_IDS,
   ACCENT_STORAGE_KEY,
@@ -93,7 +95,26 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: bootstrapScript }} />
       </head>
       <body className="antialiased">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          {children}
+          {/* Toast providers — DevSpace components use both shadcn's useToast
+              hook and the sonner library directly, so both toasters must be
+              mounted at the root. They don't conflict — each renders its own
+              viewport. */}
+          <ShadcnToaster />
+          <SonnerToaster
+            position="bottom-right"
+            toastOptions={{
+              // Use LUCIAN CSS variables for theming — sonner respects
+              // these via inline styles.
+              style: {
+                background: "var(--surface)",
+                color: "var(--fg)",
+                border: "1px solid var(--line)",
+              },
+            }}
+          />
+        </ThemeProvider>
       </body>
     </html>
   );
