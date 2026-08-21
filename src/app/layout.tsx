@@ -1,20 +1,32 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { AppShell } from "@/components/layout/AppShell";
 import {
   ACCENT_IDS,
   ACCENT_STORAGE_KEY,
   DEFAULT_ACCENT,
   DEFAULT_THEME,
+  LEGACY_ACCENT_STORAGE_KEY,
+  LEGACY_THEME_STORAGE_KEY,
   THEME_IDS,
   THEME_STORAGE_KEY,
 } from "@/lib/themes";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Lucid — Dashboard",
+  title: "Lucian — Dashboard",
   description:
-    "A premium, themeable dashboard shell with a GitHub-inspired layout.",
+    "Lucian Workspace — a premium, themeable workspace shell with a GitHub-inspired layout.",
+  icons: {
+    icon: [
+      { url: "/branding/lucian-workspace-icon.png", type: "image/png" },
+    ],
+    apple: [
+      { url: "/branding/lucian-workspace-icon.png", type: "image/png" },
+    ],
+    shortcut: "/branding/lucian-workspace-icon.png",
+  },
 };
 
 const bootstrapScript = `
@@ -22,8 +34,8 @@ const bootstrapScript = `
   try {
     var themes = ${JSON.stringify(THEME_IDS)};
     var accents = ${JSON.stringify(ACCENT_IDS)};
-    var t = localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});
-    var a = localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)});
+    var t = localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)}) || localStorage.getItem(${JSON.stringify(LEGACY_THEME_STORAGE_KEY)});
+    var a = localStorage.getItem(${JSON.stringify(ACCENT_STORAGE_KEY)}) || localStorage.getItem(${JSON.stringify(LEGACY_ACCENT_STORAGE_KEY)});
     document.documentElement.dataset.theme =
       themes.indexOf(t) >= 0 ? t : ${JSON.stringify(DEFAULT_THEME)};
     document.documentElement.dataset.accent =
@@ -47,7 +59,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: bootstrapScript }} />
       </head>
       <body className="antialiased">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <AppShell>{children}</AppShell>
+        </ThemeProvider>
       </body>
     </html>
   );

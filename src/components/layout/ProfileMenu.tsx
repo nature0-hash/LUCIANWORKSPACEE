@@ -64,7 +64,7 @@ export function ProfileMenu({ onOpenSettings }: ProfileMenuProps) {
                 Lucian Mercer
               </p>
               <p className="truncate text-xs text-fg-muted">
-                lucian@lucid.app
+                lucian@lucian.workspace
               </p>
             </div>
           </div>
