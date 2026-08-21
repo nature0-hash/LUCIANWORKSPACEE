@@ -114,8 +114,11 @@ export const ACCENTS: AccentDefinition[] = [
 export const DEFAULT_THEME: ThemeId = "midnight-gray";
 export const DEFAULT_ACCENT: AccentId = "lucian-gold";
 
-export const THEME_STORAGE_KEY = "lucid-theme";
-export const ACCENT_STORAGE_KEY = "lucid-accent";
+export const THEME_STORAGE_KEY = "lucian-theme";
+export const ACCENT_STORAGE_KEY = "lucian-accent";
+/** Legacy keys for migration from early builds */
+export const LEGACY_THEME_STORAGE_KEY = "lucid-theme";
+export const LEGACY_ACCENT_STORAGE_KEY = "lucid-accent";
 
 export const THEME_IDS = THEMES.map((t) => t.id);
 export const ACCENT_IDS = ACCENTS.map((a) => a.id);

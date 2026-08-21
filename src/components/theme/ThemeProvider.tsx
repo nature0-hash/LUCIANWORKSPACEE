@@ -13,6 +13,8 @@ import {
   ACCENT_STORAGE_KEY,
   DEFAULT_ACCENT,
   DEFAULT_THEME,
+  LEGACY_ACCENT_STORAGE_KEY,
+  LEGACY_THEME_STORAGE_KEY,
   THEME_IDS,
   THEME_STORAGE_KEY,
   type AccentId,
@@ -28,8 +30,9 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function readStored<T extends string>(
+function readStoredWithFallback<T extends string>(
   key: string,
+  legacyKey: string,
   valid: readonly string[],
   fallback: T
 ): T {
@@ -37,6 +40,14 @@ function readStored<T extends string>(
   try {
     const value = window.localStorage.getItem(key);
     if (value && valid.includes(value)) return value as T;
+    const legacy = window.localStorage.getItem(legacyKey);
+    if (legacy && valid.includes(legacy)) {
+      // migrate legacy to new key
+      try {
+        window.localStorage.setItem(key, legacy);
+      } catch {}
+      return legacy as T;
+    }
   } catch {
     /* storage unavailable */
   }
@@ -49,8 +60,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // Sync React state with what the inline bootstrap script already applied.
   useEffect(() => {
-    setThemeState(readStored(THEME_STORAGE_KEY, THEME_IDS, DEFAULT_THEME));
-    setAccentState(readStored(ACCENT_STORAGE_KEY, ACCENT_IDS, DEFAULT_ACCENT));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setThemeState(readStoredWithFallback(THEME_STORAGE_KEY, LEGACY_THEME_STORAGE_KEY, THEME_IDS, DEFAULT_THEME));
+    setAccentState(readStoredWithFallback(ACCENT_STORAGE_KEY, LEGACY_ACCENT_STORAGE_KEY, ACCENT_IDS, DEFAULT_ACCENT));
   }, []);
 
   const setTheme = useCallback((next: ThemeId) => {
