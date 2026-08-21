@@ -1,0 +1,100 @@
+import type { Metadata, Viewport } from "next";
+import type { ReactNode } from "react";
+import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import {
+  ACCENT_IDS,
+  ACCENT_STORAGE_KEY,
+  DEFAULT_ACCENT,
+  DEFAULT_THEME,
+  LEGACY_ACCENT_STORAGE_KEY,
+  LEGACY_THEME_STORAGE_KEY,
+  THEME_IDS,
+  THEME_STORAGE_KEY,
+} from "@/lib/themes";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Lucian — Workspace",
+  description:
+    "Lucian Workspace — a clean, themeable workspace foundation with a GitHub-inspired layout.",
+  applicationName: "Lucian Workspace",
+  icons: {
+    icon: [
+      { url: "/icon.png", type: "image/png" },
+      { url: "/branding/icon-32.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#0e1013" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f8fa" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+};
+
+/**
+ * Inline bootstrap script — runs synchronously before paint so the user's
+ * persisted theme/accent is applied to <html> without a flash of the default.
+ *
+ * It also transparently migrates the legacy `lucid-*` localStorage keys
+ * (from the previous build) to the new `lucian-*` keys.
+ */
+const bootstrapScript = `
+(function () {
+  try {
+    var themes = ${JSON.stringify(THEME_IDS)};
+    var accents = ${JSON.stringify(ACCENT_IDS)};
+    var themeKey = ${JSON.stringify(THEME_STORAGE_KEY)};
+    var accentKey = ${JSON.stringify(ACCENT_STORAGE_KEY)};
+    var legacyThemeKey = ${JSON.stringify(LEGACY_THEME_STORAGE_KEY)};
+    var legacyAccentKey = ${JSON.stringify(LEGACY_ACCENT_STORAGE_KEY)};
+
+    var t = localStorage.getItem(themeKey);
+    if (!t && localStorage.getItem(legacyThemeKey)) {
+      t = localStorage.getItem(legacyThemeKey);
+      if (t) {
+        localStorage.setItem(themeKey, t);
+        localStorage.removeItem(legacyThemeKey);
+      }
+    }
+    var a = localStorage.getItem(accentKey);
+    if (!a && localStorage.getItem(legacyAccentKey)) {
+      a = localStorage.getItem(legacyAccentKey);
+      if (a) {
+        localStorage.setItem(accentKey, a);
+        localStorage.removeItem(legacyAccentKey);
+      }
+    }
+
+    document.documentElement.dataset.theme =
+      themes.indexOf(t) >= 0 ? t : ${JSON.stringify(DEFAULT_THEME)};
+    document.documentElement.dataset.accent =
+      accents.indexOf(a) >= 0 ? a : ${JSON.stringify(DEFAULT_ACCENT)};
+  } catch (e) {
+    document.documentElement.dataset.theme = ${JSON.stringify(DEFAULT_THEME)};
+    document.documentElement.dataset.accent = ${JSON.stringify(DEFAULT_ACCENT)};
+  }
+})();
+`;
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html
+      lang="en"
+      data-theme={DEFAULT_THEME}
+      data-accent={DEFAULT_ACCENT}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: bootstrapScript }} />
+      </head>
+      <body className="antialiased">
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
+    </html>
+  );
+}
