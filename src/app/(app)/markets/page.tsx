@@ -1,3 +1,7 @@
+"use client";
+
+import { MarketsFrame } from "@/components/markets/markets-frame";
+
 export default function MarketsPage() {
-  return null;
+  return <MarketsFrame />;
 }
