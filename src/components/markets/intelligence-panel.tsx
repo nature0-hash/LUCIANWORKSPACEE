@@ -1,7 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Filter, Newspaper, MessageCircle, TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
+import {
+  Filter,
+  Newspaper,
+  MessageCircle,
+  TrendingUp,
+  TrendingDown,
+  BarChart3,
+  Plus,
+  GraduationCap,
+  Radio,
+} from "lucide-react";
 import { useMarketsStore } from "@/store/markets";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +37,7 @@ export function IntelligencePanel() {
   ];
 
   return (
-    <div className="flex h-full flex-col bg-[#181b21]">
+    <div className="flex h-full flex-col bg-[#131722]">
       {/* Tab strip */}
       <div className="flex h-8 shrink-0 items-center gap-0.5 border-b border-[#1f2329] px-1">
         <TabBtn
@@ -67,11 +77,7 @@ export function IntelligencePanel() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === "chat" ? (
-          <ChatPanel
-            instrument={instrument}
-            price={price}
-            ticker={ticker}
-          />
+          <ChatPanel instrument={instrument} price={price} ticker={ticker} />
         ) : (
           <FeedPanel
             instrument={instrument}
@@ -209,7 +215,7 @@ function FeedPanel({
     <div className="space-y-2 p-2">
       {/* Market summary card */}
       {instrument && ticker && (
-        <div className="rounded border border-[#1f2329] bg-[#1a1d23] p-2.5">
+        <div className="rounded bg-[#1a1d23] p-2.5">
           <div className="flex items-center gap-1.5">
             <BarChart3 className="h-3 w-3 text-[#3b82f6]" />
             <span className="text-[11px] font-medium text-white">
@@ -256,14 +262,41 @@ function FeedPanel({
         </div>
       )}
 
-      {/* Feed items */}
+      {/* Feed items — styled like the screenshot post cards */}
       {feedItems.length > 0 ? (
         feedItems.map((item, i) => (
-          <div
-            key={i}
-            className="rounded border border-[#1f2329] bg-[#1a1d23] p-2.5"
-          >
-            <div className="flex items-center gap-1.5">
+          <div key={i} className="rounded bg-[#1a1d23] p-3">
+            {/* Post header: avatar + name + time + follow */}
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#3b82f6]/20 text-[10px] font-bold text-[#3b82f6]">
+                {item.author.charAt(0)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[11px] font-medium text-white">
+                  {item.author}
+                </p>
+                <p className="text-[9px] text-[#565c66]">{item.timestamp}</p>
+              </div>
+              <button
+                title="Follow"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#2d333b] text-[#8b949e] transition-colors hover:border-[#3b82f6] hover:text-[#3b82f6]"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            </div>
+
+            {/* Post title */}
+            <p className="mt-2 text-[11px] font-bold uppercase text-white">
+              {item.title}
+            </p>
+
+            {/* Post body */}
+            <p className="mt-1 text-[10px] leading-relaxed text-[#8b949e]">
+              {item.body}
+            </p>
+
+            {/* Tag badge */}
+            <div className="mt-2 flex items-center gap-1.5">
               <span
                 className={cn(
                   "rounded px-1 py-0.5 text-[8px] font-bold uppercase",
@@ -274,17 +307,17 @@ function FeedPanel({
               >
                 {item.type}
               </span>
-              <span className="text-[9px] text-[#565c66]">{item.timestamp}</span>
             </div>
-            <p className="mt-1 text-[11px] text-white">{item.title}</p>
-            <p className="mt-0.5 text-[10px] text-[#8b949e]">{item.body}</p>
           </div>
         ))
       ) : (
         <div className="rounded border border-dashed border-[#1f2329] p-4 text-center">
-          <p className="text-[11px] text-[#8b949e]">No feed items for this filter.</p>
+          <p className="text-[11px] text-[#8b949e]">
+            No feed items for this filter.
+          </p>
           <p className="mt-0.5 text-[10px] text-[#565c66]">
-            Feed items are generated from live market data.
+            Feed items are generated from live market data. Select an
+            instrument to see real analysis.
           </p>
         </div>
       )}
@@ -297,14 +330,27 @@ function generateFeedItems(
   price: number | undefined,
   ticker: import("@/lib/markets/types").Ticker | undefined,
   filter: string,
-): { type: string; title: string; body: string; timestamp: string }[] {
+): {
+  type: string;
+  author: string;
+  title: string;
+  body: string;
+  timestamp: string;
+}[] {
   if (!instrument || !ticker || price === undefined) return [];
 
-  const items: { type: string; title: string; body: string; timestamp: string }[] =
-    [];
+  const items: {
+    type: string;
+    author: string;
+    title: string;
+    body: string;
+    timestamp: string;
+  }[] = [];
   const changePct = ticker.priceChangePercent;
   const range = ticker.highPrice - ticker.lowPrice;
-  const now = new Date().toLocaleTimeString("en-US", {
+  const now = new Date().toLocaleString("en-US", {
+    month: "long",
+    day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -312,19 +358,25 @@ function generateFeedItems(
   if (filter === "all" || filter === "analysis") {
     const direction = changePct >= 0 ? "bullish" : "bearish";
     const strength =
-      Math.abs(changePct) > 5 ? "strong" : Math.abs(changePct) > 2 ? "moderate" : "mild";
+      Math.abs(changePct) > 5
+        ? "strong"
+        : Math.abs(changePct) > 2
+        ? "moderate"
+        : "mild";
     items.push({
       type: "analysis",
-      title: `${instrument.symbol} shows ${strength} ${direction} momentum`,
-      body: `Price moved ${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}% in 24h, ranging from ${ticker.lowPrice.toFixed(2)} to ${ticker.highPrice.toFixed(2)}. Current: ${price.toFixed(instrument.pricePrecision)}.`,
+      author: "LUCIAN Market Intelligence",
+      title: `${instrument.symbol} ${direction.toUpperCase()} MOMENTUM`,
+      body: `Price moved ${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}% in 24h, ranging from ${ticker.lowPrice.toFixed(2)} to ${ticker.highPrice.toFixed(2)}. Current price: ${price.toFixed(instrument.pricePrecision)}. This indicates ${strength} ${direction} momentum. Volume stands at ${ticker.volume.toLocaleString("en-US", { maximumFractionDigits: 0 })} ${instrument.base}, with a quote volume of $${ticker.quoteVolume.toLocaleString("en-US", { maximumFractionDigits: 0 })}.`,
       timestamp: now,
     });
 
     if (ticker.volume > 0) {
       items.push({
         type: "analysis",
-        title: `Volume: ${ticker.volume.toLocaleString("en-US", { maximumFractionDigits: 0 })} ${instrument.base}`,
-        body: `Quote volume: $${ticker.quoteVolume.toLocaleString("en-US", { maximumFractionDigits: 0 })}. ${ticker.quoteVolume > 1000000 ? "High" : ticker.quoteVolume > 100000 ? "Moderate" : "Low"} liquidity.`,
+        author: "LUCIAN Volume Tracker",
+        title: `${instrument.base} VOLUME ANALYSIS`,
+        body: `24h volume: ${ticker.volume.toLocaleString("en-US", { maximumFractionDigits: 0 })} ${instrument.base} traded. Quote volume: $${ticker.quoteVolume.toLocaleString("en-US", { maximumFractionDigits: 0 })}. ${ticker.quoteVolume > 1000000 ? "High liquidity — institutional interest detected." : ticker.quoteVolume > 100000 ? "Moderate liquidity — normal market conditions." : "Lower liquidity — exercise caution with large orders."}`,
         timestamp: now,
       });
     }
@@ -334,16 +386,18 @@ function generateFeedItems(
     const spread = ticker.askPrice - ticker.bidPrice;
     items.push({
       type: "ideas",
-      title: `Spread: ${spread.toFixed(2)} (${((spread / price) * 100).toFixed(3)}%)`,
-      body: `Bid: ${ticker.bidPrice.toFixed(2)}, Ask: ${ticker.askPrice.toFixed(2)}. ${spread / price < 0.001 ? "Tight spread." : "Wider spread — consider limit orders."}`,
+      author: "LUCIAN Trading Ideas",
+      title: `${instrument.symbol} SPREAD ANALYSIS`,
+      body: `Current spread: ${spread.toFixed(2)} (${((spread / price) * 100).toFixed(3)}%). Bid: ${ticker.bidPrice.toFixed(2)}, Ask: ${ticker.askPrice.toFixed(2)}. ${spread / price < 0.001 ? "Tight spread — favorable for active trading and scalping strategies." : "Wider spread detected — consider using limit orders to minimize slippage."}`,
       timestamp: now,
     });
 
     const rangePct = (range / ticker.lowPrice) * 100;
     items.push({
       type: "ideas",
-      title: `24h range: ${rangePct.toFixed(1)}%`,
-      body: `${rangePct > 10 ? "High volatility — wider stops recommended." : rangePct > 5 ? "Moderate volatility." : "Low volatility."}`,
+      author: "LUCIAN Range Analysis",
+      title: `${instrument.symbol} 24H RANGE: ${rangePct.toFixed(1)}%`,
+      body: `Price ranged ${rangePct.toFixed(1)}% from low (${ticker.lowPrice.toFixed(2)}) to high (${ticker.highPrice.toFixed(2)}). ${rangePct > 10 ? "High volatility — consider wider stop-loss placements and reduced position sizes." : rangePct > 5 ? "Moderate volatility — standard risk parameters apply." : "Low volatility — tight trading range, breakout potential building."}`,
       timestamp: now,
     });
   }
@@ -351,8 +405,9 @@ function generateFeedItems(
   if (filter === "all" || filter === "news") {
     items.push({
       type: "news",
-      title: `${instrument.name} — Live via ${instrument.assetClass} provider`,
-      body: `Real-time price data streaming. Symbol: ${instrument.symbol}.`,
+      author: "LUCIAN Market News",
+      title: `${instrument.name} — LIVE DATA ACTIVE`,
+      body: `Real-time price data streaming for ${instrument.symbol}. Asset class: ${instrument.assetClass}. Data provider: Binance public API. All prices shown are live, not delayed.`,
       timestamp: now,
     });
   }
