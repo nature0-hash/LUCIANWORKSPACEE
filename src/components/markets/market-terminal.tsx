@@ -7,7 +7,6 @@ import { AccountBar } from "./account-bar";
 import { InstrumentList } from "./instrument-list";
 import { ChartPanel } from "./chart-panel";
 import { TradingPanel } from "./trading-panel";
-import { IntelligencePanel } from "./intelligence-panel";
 import { ToolRail } from "./tool-rail";
 
 export function MarketTerminal() {
@@ -29,29 +28,23 @@ export function MarketTerminal() {
         {/* Top account bar */}
         <AccountBar />
 
-        {/* 3-pane resizable layout */}
+        {/* 2-pane resizable layout (instruments + chart/trading) */}
         <div className="min-h-0 flex-1 overflow-hidden">
           <PanelGroup direction="horizontal">
             {/* Instruments panel */}
-            <Panel defaultSize={18} minSize={12} maxSize={26}>
+            <Panel defaultSize={20} minSize={14} maxSize={28}>
               <InstrumentList />
             </Panel>
             <PanelResizeHandle className="w-px bg-[#2d333b] hover:bg-[#3b82f6] transition-colors" />
 
             {/* Center: chart + bottom trading panel */}
-            <Panel defaultSize={56} minSize={28}>
+            <Panel defaultSize={80} minSize={40}>
               <div className="flex h-full flex-col">
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <ChartPanel />
                 </div>
                 <TradingPanel />
               </div>
-            </Panel>
-            <PanelResizeHandle className="w-px bg-[#2d333b] hover:bg-[#3b82f6] transition-colors" />
-
-            {/* Right panel: Chat / Feed */}
-            <Panel defaultSize={22} minSize={14}>
-              <IntelligencePanel />
             </Panel>
           </PanelGroup>
         </div>
