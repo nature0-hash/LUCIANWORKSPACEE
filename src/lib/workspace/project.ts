@@ -41,6 +41,7 @@ export function createEmptyProject(name: string, description = ""): Project {
     fileCount: 0,
     totalSize: 0,
     skippedDirs: [],
+    trashedAt: null,
   };
 }
 
@@ -320,6 +321,7 @@ export async function buildProjectFromImport(
     fileCount: entries.length,
     totalSize: sumSize(entries),
     skippedDirs,
+    trashedAt: null,
   };
 }
 
@@ -354,190 +356,8 @@ export async function buildProjectFromFiles(name: string, files: ProjectFile[]):
     fileCount: entries.length,
     totalSize: sumSize(entries),
     skippedDirs: [],
+    trashedAt: null,
   };
 }
-
-// ---------------------------------------------------------------------------
-// Sample seed projects — used to make the library feel alive on first run.
-// Each builder returns a Project whose files have inline content AND a
-// matching contents[] array for persistence to the contents store.
-// ---------------------------------------------------------------------------
-
-export interface SampleProject extends Project {
-  /** Inline content for each file, to be persisted via setManyFileContents. */
-  inlineContents: { path: string; content: string }[];
-}
-
-export function buildSampleReactProject(): SampleProject {
-  const now = Date.now();
-  const inlineContents = [
-    {
-      path: "package.json",
-      content: JSON.stringify(
-        {
-          name: "sample-react-counter",
-          private: true,
-          version: "0.1.0",
-          dependencies: { react: "^18.2.0", "react-dom": "^18.2.0" },
-        },
-        null,
-        2,
-      ),
-    },
-    {
-      path: "index.html",
-      content: `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sample React Counter</title>
-    <style>
-      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: grid; place-items: center; }
-      .card { background: white; padding: 3rem 4rem; border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4); text-align: center; }
-      h1 { margin: 0 0 1rem; color: #2d3748; font-size: 2rem; }
-      .count { font-size: 5rem; font-weight: 800; color: #667eea; margin: 1rem 0; transition: transform 0.15s ease; }
-      .count:active { transform: scale(0.92); }
-      button { background: #667eea; color: white; border: none; padding: 0.75rem 1.5rem; font-size: 1rem; border-radius: 12px; cursor: pointer; margin: 0 0.5rem; transition: background 0.15s; font-weight: 600; }
-      button:hover { background: #5568d3; }
-      button.reset { background: #e53e3e; }
-      button.reset:hover { background: #c53030; }
-      p { color: #718096; margin-top: 1.5rem; }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
-</html>
-`,
-    },
-    {
-      path: "App.jsx",
-      content: `export default function App() {
-  const [count, setCount] = React.useState(0);
-  return (
-    <div className="card">
-      <h1>React Counter</h1>
-      <div className="count">{count}</div>
-      <button onClick={() => setCount(count + 1)}>Increment</button>
-      <button className="reset" onClick={() => setCount(0)}>Reset</button>
-      <p>Edit App.jsx and hit Save — the preview will reload.</p>
-    </div>
-  );
-}
-`,
-    },
-  ];
-  const entries: FileEntry[] = inlineContents.map((c) => ({
-    path: c.path,
-    binary: false,
-    size: new TextEncoder().encode(c.content).length,
-    updatedAt: now,
-    loaded: false,
-  }));
-  return {
-    id: newId("prj"),
-    name: "Sample React Counter",
-    description: "A minimal React counter demonstrating live preview with Babel transpilation.",
-    createdAt: now,
-    updatedAt: now,
-    files: entries,
-    framework: detectFramework(entries),
-    envVars: [],
-    tags: ["sample", "react"],
-    fileCount: entries.length,
-    totalSize: sumSize(entries),
-    skippedDirs: [],
-    inlineContents,
-  };
-}
-
-export function buildSampleHtmlProject(): SampleProject {
-  const now = Date.now();
-  const inlineContents = [
-    {
-      path: "index.html",
-      content: `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Coming Soon</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <main class="wrap">
-      <h1>We're launching soon</h1>
-      <p class="tag">Something amazing is on the way. Stay tuned.</p>
-      <form onsubmit="event.preventDefault(); alert('Thanks! We will notify you at ' + this.email.value);">
-        <input type="email" name="email" placeholder="you@example.com" required />
-        <button type="submit">Notify me</button>
-      </form>
-      <div class="progress"><div class="bar"></div></div>
-    </main>
-    <script src="./script.js"></script>
-  </body>
-</html>
-`,
-    },
-    {
-      path: "styles.css",
-      content: `* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: radial-gradient(circle at 30% 20%, #ff9a9e 0%, #fad0c4 50%, #fbc2eb 100%);
-  min-height: 100vh; display: grid; place-items: center; color: #2d3748;
-}
-.wrap {
-  background: rgba(255,255,255,0.85); backdrop-filter: blur(20px);
-  padding: 3rem; border-radius: 28px; text-align: center;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.15); max-width: 480px; width: 90%;
-}
-h1 { font-size: 2.5rem; margin-bottom: 0.5rem; background: linear-gradient(90deg, #667eea, #764ba2); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
-.tag { color: #718096; margin-bottom: 2rem; font-size: 1.05rem; }
-form { display: flex; gap: 0.5rem; margin-bottom: 2rem; }
-input { flex: 1; padding: 0.85rem 1rem; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 1rem; outline: none; transition: border-color 0.15s; }
-input:focus { border-color: #667eea; }
-button { background: #667eea; color: white; border: none; padding: 0.85rem 1.5rem; border-radius: 12px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: transform 0.15s, background 0.15s; }
-button:hover { background: #5568d3; transform: translateY(-2px); }
-.progress { height: 6px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
-.bar { height: 100%; width: 65%; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 999px; animation: pulse 2s ease-in-out infinite; }
-@keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
-`,
-    },
-    {
-      path: "script.js",
-      content: `// Welcome! Edit this file and the preview will update.
-console.log("Coming Soon page loaded.");
-document.querySelectorAll("button").forEach((b) =>
-  b.addEventListener("mouseenter", () => (b.style.transform = "scale(1.05)")),
-);
-`,
-    },
-  ];
-  const entries: FileEntry[] = inlineContents.map((c) => ({
-    path: c.path,
-    binary: false,
-    size: new TextEncoder().encode(c.content).length,
-    updatedAt: now,
-    loaded: false,
-  }));
-  return {
-    id: newId("prj"),
-    name: "Coming Soon Landing",
-    description: "Static HTML + CSS + JS landing page with gradient hero.",
-    createdAt: now,
-    updatedAt: now,
-    files: entries,
-    framework: detectFramework(entries),
-    envVars: [],
-    tags: ["sample", "html"],
-    fileCount: entries.length,
-    totalSize: sumSize(entries),
-    skippedDirs: [],
-    inlineContents,
-  };
-}
-
 // Re-export contentKey for components that need it.
 export { contentKey };

@@ -31,6 +31,7 @@ import {
   getManyFileContents,
   getProject,
   listProjects,
+  listTrashedProjects,
   renameFileContent,
   saveProject,
   setFileContent,
@@ -39,7 +40,6 @@ import {
   buildProjectFromImport,
   createEmptyProject,
   newId,
-  type SampleProject,
 } from "@/lib/workspace/project";
 import { detectFramework } from "@/lib/workspace/filesystem";
 import { scanProject } from "@/lib/workspace/project-scanner";
@@ -56,7 +56,6 @@ interface WorkspaceState {
   loadingProjects: boolean;
   refreshProjects: () => Promise<void>;
   createProject: (name: string, description?: string) => Promise<Project>;
-  addSampleProject: (sample: SampleProject) => Promise<Project>;
   importProject: (name: string, importResult: {
     entries: FileEntry[];
     contents: { path: string; content: string }[];
@@ -65,7 +64,23 @@ interface WorkspaceState {
   openProject: (id: string) => Promise<void>;
   closeProject: () => void;
   renameProject: (id: string, name: string) => Promise<void>;
+  /**
+   * Soft-delete: move a project to the Recycle Bin. The project record and
+   * all its file contents stay in IndexedDB; only `trashedAt` is set.
+   */
   removeProject: (id: string) => Promise<void>;
+  /** Restore a project from the Recycle Bin. */
+  restoreProject: (id: string) => Promise<void>;
+  /**
+   * Permanently delete a project AND every file + version row that belongs
+   * to it. Cannot be undone.
+   */
+  permanentlyDeleteProject: (id: string) => Promise<void>;
+  /** Empty the Recycle Bin (permanently delete every trashed project). */
+  emptyRecycleBin: () => Promise<void>;
+  /** Trashed projects list (kept on the store so the Storage Manager can render). */
+  trashedProjects: Project[];
+  refreshTrashedProjects: () => Promise<void>;
   updateProjectEntries: (id: string, files: FileEntry[]) => Promise<void>;
   updateProjectEnv: (id: string, envVars: EnvVar[]) => Promise<void>;
   persistActive: () => Promise<void>;
@@ -153,21 +168,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     return project;
   },
 
-  addSampleProject: async (sample) => {
-    // Persist inline contents to the contents store.
-    const { setManyFileContents } = await import("@/lib/workspace/db");
-    await setManyFileContents(sample.id, sample.inlineContents);
-    // Mark entries as loaded (content is now in the store).
-    const project: Project = {
-      ...sample,
-      files: sample.files.map((f) => ({ ...f, loaded: false })),
-    };
-    delete (project as Partial<SampleProject>).inlineContents;
-    await saveProject(project);
-    set((s) => ({ projects: [project, ...s.projects] }));
-    return project;
-  },
-
   importProject: async (name, importResult) => {
     const project = await buildProjectFromImport(name, importResult);
     // Scan the project for required services / env vars so we can show the
@@ -224,12 +224,58 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   },
 
   removeProject: async (id) => {
-    await dbDeleteProject(id);
+    // Soft-delete: mark trashedAt, keep the row + file contents so the
+    // user can restore from the Recycle Bin later.
+    const project = await getProject(id);
+    if (!project) return;
+    project.trashedAt = Date.now();
+    await saveProject(project);
     set((s) => ({
       projects: s.projects.filter((p) => p.id !== id),
+      trashedProjects: [project, ...s.trashedProjects],
       activeProject: s.activeProjectId === id ? null : s.activeProject,
       activeProjectId: s.activeProjectId === id ? null : s.activeProjectId,
     }));
+  },
+
+  restoreProject: async (id) => {
+    const project = await getProject(id);
+    if (!project) return;
+    project.trashedAt = null;
+    await saveProject(project);
+    set((s) => ({
+      projects: [project, ...s.projects],
+      trashedProjects: s.trashedProjects.filter((p) => p.id !== id),
+    }));
+  },
+
+  permanentlyDeleteProject: async (id) => {
+    await dbDeleteProject(id);
+    set((s) => ({
+      projects: s.projects.filter((p) => p.id !== id),
+      trashedProjects: s.trashedProjects.filter((p) => p.id !== id),
+      activeProject: s.activeProjectId === id ? null : s.activeProject,
+      activeProjectId: s.activeProjectId === id ? null : s.activeProjectId,
+    }));
+  },
+
+  emptyRecycleBin: async () => {
+    const { trashedProjects } = get();
+    for (const p of trashedProjects) {
+      await dbDeleteProject(p.id);
+    }
+    set({ trashedProjects: [] });
+  },
+
+  // --- Trashed projects list ---
+  trashedProjects: [],
+  refreshTrashedProjects: async () => {
+    try {
+      const list = await listTrashedProjects();
+      set({ trashedProjects: list });
+    } catch (err) {
+      console.error("Failed to list trashed projects:", err);
+    }
   },
 
   updateProjectEntries: async (id, files) => {

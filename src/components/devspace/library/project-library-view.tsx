@@ -11,7 +11,6 @@ import {
   ExternalLink,
   Copy,
   FolderInput,
-  Package,
   Loader2,
   FileCode2,
   Calendar,
@@ -49,8 +48,6 @@ import { Label } from "@/components/ui-devspace/label";
 import { Textarea } from "@/components/ui-devspace/textarea";
 import { toast } from "@/hooks/use-toast";
 import {
-  buildSampleHtmlProject,
-  buildSampleReactProject,
   importFolderToFiles,
   importZipToFiles,
 } from "@/lib/workspace/project";
@@ -58,19 +55,9 @@ import { saveProject } from "@/lib/workspace/db";
 import { importFromGitHub } from "@/lib/workspace/github";
 import { formatBytes } from "@/lib/workspace/filesystem";
 import { countMissing } from "@/lib/workspace/project-scanner";
+import { frameworkLabel } from "@/lib/workspace/filesystem";
 import { cn } from "@/lib/utils";
 import type { DetectedFramework, Project, ScanResult } from "@/types/workspace";
-
-const FRAMEWORK_LABEL: Record<DetectedFramework, string> = {
-  html: "HTML",
-  "react-jsx": "React JSX",
-  "react-tsx": "React TSX",
-  "react-vite": "React + Vite",
-  nextjs: "Next.js",
-  vue: "Vue",
-  static: "Static",
-  unknown: "Empty",
-};
 
 const FRAMEWORK_COLOR: Record<DetectedFramework, string> = {
   html: "bg-orange-500/15 text-orange-700 dark:text-orange-300",
@@ -90,7 +77,6 @@ export function ProjectLibraryView() {
     refreshProjects,
     createProject,
     importProject,
-    addSampleProject,
     openProject,
     removeProject,
     renameProject,
@@ -131,15 +117,6 @@ export function ProjectLibraryView() {
     setNewName("");
     setNewDesc("");
     toast({ title: "Project created", description: project.name });
-  };
-
-  const handleSeedSamples = async () => {
-    const reactSample = buildSampleReactProject();
-    const htmlSample = buildSampleHtmlProject();
-    await addSampleProject(reactSample);
-    await addSampleProject(htmlSample);
-    await refreshProjects();
-    toast({ title: "Sample projects added" });
   };
 
   const handleZipImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -288,9 +265,14 @@ export function ProjectLibraryView() {
   };
 
   const handleDelete = async (project: Project) => {
-    if (!confirm(`Delete "${project.name}"? This cannot be undone.`)) return;
+    // Soft-delete: project goes to the Recycle Bin. Restore or permanently
+    // delete from the Storage Manager. No `confirm()` prompt needed since
+    // the action is reversible from the Recycle Bin.
     await removeProject(project.id);
-    toast({ title: "Project deleted", description: project.name });
+    toast({
+      title: "Moved to Recycle Bin",
+      description: `${project.name} — restore it from the Storage Manager if needed.`,
+    });
   };
 
   return (
@@ -301,7 +283,7 @@ export function ProjectLibraryView() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Project Library</h1>
             <p className="mt-1 text-muted-foreground">
-              Store AI-generated projects, edit them, run live previews, and download as ZIP.
+              Create, import, edit, preview, and export projects from one connected workspace.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -377,12 +359,6 @@ export function ProjectLibraryView() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-            {projects.length === 0 && (
-              <Button variant="secondary" onClick={handleSeedSamples}>
-                <Package className="mr-2 h-4 w-4" />
-                Add Sample Projects
-              </Button>
-            )}
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
                 <Button>
@@ -459,7 +435,7 @@ export function ProjectLibraryView() {
             <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading...
           </div>
         ) : filtered.length === 0 ? (
-          <EmptyState onCreate={() => setCreateOpen(true)} onSeed={handleSeedSamples} />
+          <EmptyState onCreate={() => setCreateOpen(true)} />
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filtered.map((project) => (
@@ -525,7 +501,7 @@ export function ProjectLibraryView() {
                       variant="secondary"
                       className={FRAMEWORK_COLOR[project.framework]}
                     >
-                      {FRAMEWORK_LABEL[project.framework]}
+                      {frameworkLabel(project.framework)}
                     </Badge>
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Database className="h-3 w-3" />
@@ -778,10 +754,8 @@ function ScanChecklistDialog({
 
 function EmptyState({
   onCreate,
-  onSeed,
 }: {
   onCreate: () => void;
-  onSeed: () => void;
 }) {
   return (
     <Card className="flex flex-col items-center justify-center gap-4 p-12 text-center">
@@ -797,9 +771,6 @@ function EmptyState({
       <div className="flex gap-2">
         <Button onClick={onCreate}>
           <FolderPlus className="mr-2 h-4 w-4" /> New Project
-        </Button>
-        <Button variant="outline" onClick={onSeed}>
-          <Package className="mr-2 h-4 w-4" /> Add Samples
         </Button>
       </div>
     </Card>

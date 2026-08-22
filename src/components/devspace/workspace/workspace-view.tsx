@@ -2,35 +2,62 @@
 
 import { useState } from "react";
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
-import { Zap, Eye } from "lucide-react";
+import { Zap, Eye, Bot } from "lucide-react";
 import { FileExplorer } from "./file-explorer";
 import { CodeEditorPane } from "./code-editor-pane";
 import { PreviewPane } from "./preview-pane";
 import { LiveRuntimePane } from "./live-runtime-pane";
 import { WorkspaceToolbar } from "./workspace-toolbar";
+import { WorkspaceEmptyState } from "./workspace-empty-state";
+import { AgentPanel } from "@/components/devspace/agent/agent-panel";
+import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
 
 type RightPane = "preview" | "runtime";
 
 export function WorkspaceView() {
+  const activeProject = useWorkspaceStore((s) => s.activeProject);
   // "preview" = instant static/Babel engine; "runtime" = real WebContainer
   // dev server. Both are honest about what they are.
   const [rightPane, setRightPane] = useState<RightPane>("preview");
+
+  if (!activeProject) {
+    return <WorkspaceEmptyState />;
+  }
 
   return (
     <div className="flex h-full flex-col">
       <WorkspaceToolbar />
       <div className="flex-1 overflow-hidden">
         <PanelGroup direction="horizontal">
-          <Panel defaultSize={20} minSize={12} maxSize={40}>
+          {/* Agent panel (left) */}
+          <Panel defaultSize={18} minSize={12} maxSize={32}>
+            <div className="flex h-full flex-col">
+              <div className="flex h-8 shrink-0 items-center gap-1.5 border-b bg-card px-2">
+                <Bot className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium">Project Agent</span>
+              </div>
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <AgentPanel compact title="Project Agent" />
+              </div>
+            </div>
+          </Panel>
+          <PanelResizeHandle className="w-1 bg-border hover:bg-primary/30 transition-colors" />
+
+          {/* Files */}
+          <Panel defaultSize={18} minSize={12} maxSize={32}>
             <FileExplorer />
           </Panel>
           <PanelResizeHandle className="w-1 bg-border hover:bg-primary/30 transition-colors" />
-          <Panel defaultSize={40} minSize={20}>
+
+          {/* Code editor */}
+          <Panel defaultSize={34} minSize={20}>
             <CodeEditorPane />
           </Panel>
           <PanelResizeHandle className="w-1 bg-border hover:bg-primary/30 transition-colors" />
-          <Panel defaultSize={40} minSize={20}>
+
+          {/* Preview / Live Runtime */}
+          <Panel defaultSize={30} minSize={20}>
             <div className="flex h-full flex-col">
               {/* Pane switcher */}
               <div className="flex h-8 shrink-0 items-center gap-1 border-b bg-card px-2">

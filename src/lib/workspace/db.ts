@@ -78,10 +78,22 @@ export function contentKey(projectId: string, path: string): string {
 
 // ---- Project CRUD --------------------------------------------------------
 
+/** Return all live projects (excluding trashed), sorted newest-updated first. */
 export async function listProjects(): Promise<Project[]> {
   const db = await getDB();
   const all = await db.getAll(PROJECTS_STORE);
-  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+  return all
+    .filter((p) => p.trashedAt === null || p.trashedAt === undefined)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** Return all trashed projects, sorted by trash date (most recent first). */
+export async function listTrashedProjects(): Promise<Project[]> {
+  const db = await getDB();
+  const all = await db.getAll(PROJECTS_STORE);
+  return all
+    .filter((p) => p.trashedAt !== null && p.trashedAt !== undefined)
+    .sort((a, b) => (b.trashedAt ?? 0) - (a.trashedAt ?? 0));
 }
 
 export async function getProject(id: string): Promise<Project | undefined> {
@@ -230,4 +242,34 @@ export async function estimateStorage(): Promise<{ usage: number; quota: number 
   }
   const est = await navigator.storage.estimate();
   return { usage: est.usage ?? 0, quota: est.quota ?? 0 };
+}
+
+/**
+ * Ask the browser to persist local storage so the user's projects survive
+ * automatic eviction by the browser's LRU cleanup. Truthful: returns
+ * `true` only when the browser actually grants persistence.
+ *
+ * Returns `{ supported: false }` when the API is unavailable.
+ */
+export async function requestPersistentStorage(): Promise<{
+  supported: boolean;
+  persisted: boolean;
+}> {
+  if (typeof navigator === "undefined" || !navigator.storage?.persist) {
+    return { supported: false, persisted: false };
+  }
+  const persisted = await navigator.storage.persist();
+  return { supported: true, persisted };
+}
+
+/** Check whether storage is already persistent. */
+export async function isStoragePersistent(): Promise<{
+  supported: boolean;
+  persisted: boolean;
+}> {
+  if (typeof navigator === "undefined" || !navigator.storage?.persisted) {
+    return { supported: false, persisted: false };
+  }
+  const persisted = await navigator.storage.persisted();
+  return { supported: true, persisted };
 }

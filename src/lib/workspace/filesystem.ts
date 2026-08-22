@@ -329,6 +329,30 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+/** Human-readable label for a detected framework. */
+export function frameworkLabel(framework: DetectedFramework): string {
+  switch (framework) {
+    case "html":
+      return "HTML";
+    case "react-jsx":
+      return "React JSX";
+    case "react-tsx":
+      return "React TSX";
+    case "react-vite":
+      return "React + Vite";
+    case "nextjs":
+      return "Next.js";
+    case "vue":
+      return "Vue";
+    case "static":
+      return "Static";
+    case "unknown":
+      return "Empty";
+    default:
+      return "Unknown";
+  }
+}
+
 /** Guess the language for Monaco based on file extension. */
 export function monacoLanguage(path: string): string {
   const ext = getExtension(path);

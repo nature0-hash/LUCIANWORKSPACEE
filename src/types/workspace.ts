@@ -73,6 +73,12 @@ export interface Project {
   skippedDirs: string[];
   /** Result of scanning the project for required services / env vars. */
   scanResult?: ScanResult;
+  /**
+   * Soft-delete timestamp. When set, the project is in the Recycle Bin
+   * and excluded from the active library list. `null` means the project
+   * is live.
+   */
+  trashedAt: number | null;
 }
 
 export type DetectedFramework =
@@ -86,7 +92,7 @@ export type DetectedFramework =
   | "unknown";
 
 /** View routes — client-side navigation inside DevWorkspace. */
-export type AppView = "library" | "workspace" | "converter";
+export type AppView = "library" | "workspace" | "visual-editor" | "converter";
 
 export interface OpenTab {
   path: string;
