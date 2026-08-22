@@ -21,7 +21,7 @@ export function AccountBar() {
   // Use a mounted flag to avoid hydration mismatch — the provider is
   // registered on the client only (window check in provider.ts).
   const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => { let c = false; Promise.resolve().then(() => { if (!c) setMounted(true); }); return () => { c = true; }; }, []);
   const dataStatus = mounted ? (cryptoProvider?.statusLabel ?? "Disconnected") : "Connecting…";
   const dotColor = mounted
     ? (cryptoProvider?.status === "live" ? "bg-green-500"
