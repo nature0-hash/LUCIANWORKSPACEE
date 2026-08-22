@@ -2,20 +2,25 @@
 
 // Project Agent panel.
 //
+// ONE single header at the top — no nested "Project Agent" rows.
+// All controls (model selector, tools menu, settings) live NEXT to the
+// composer at the bottom — closer to the action surface, like a real
+// professional coding-assistant pane.
+//
 // This is the same Agent component used in both the Workspace AND the
 // Visual Editor Studio. It is project-scoped: it reads the active project
 // from the DevWorkspace Zustand store, loads the conversation for that
 // project from IndexedDB, and submits messages through the currently
-// registered ModelProvider.
-//
-// When no provider is configured, the UI says so honestly — no fake AI
-// responses. The user can still see the tool list and conversation history.
+// registered ModelProvider. The conversation follows the project across
+// Workspace ↔ Visual Editor Studio.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
+  ChevronDown,
+  Cpu,
+  Plus,
   Send,
-  Settings2,
   Sparkles,
   Trash2,
   Wrench,
@@ -31,11 +36,11 @@ import {
   DialogTitle,
 } from "@/components/ui-devspace/dialog";
 import { useWorkspaceStore } from "@/store/workspace";
-import { useTheme } from "@/components/theme/ThemeProvider";
 import {
   getModelProvider,
   runAgentTurn,
   type AgentMessage,
+  type AgentTool,
   type ToolContext,
 } from "@/lib/agent/types";
 import { buildProjectTools } from "@/lib/agent/tools";
@@ -50,13 +55,15 @@ When you make file changes, call the write_file tool with the full new file cont
 When you don't know something, say so honestly. Never fabricate framework errors, npm output, or AI responses.`;
 
 interface AgentPanelProps {
-  /** Compact height when embedded in a tight column (e.g. Visual Editor right pane). */
+  /**
+   * When true, the panel renders in a tighter form factor. The composer
+   * + message list still occupy the full height; only the typography
+   * is slightly smaller. Defaults to false (full).
+   */
   compact?: boolean;
-  /** Optional title shown above the messages. */
-  title?: string;
 }
 
-export function AgentPanel({ compact = false, title }: AgentPanelProps) {
+export function AgentPanel({ compact = false }: AgentPanelProps) {
   const activeProject = useWorkspaceStore((s) => s.activeProject);
   const loadFileContent = useWorkspaceStore((s) => s.loadFileContent);
   const getActiveProjectFiles = useWorkspaceStore((s) => s.getActiveProjectFiles);
@@ -68,10 +75,12 @@ export function AgentPanel({ compact = false, title }: AgentPanelProps) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const [provider, setProvider] = useState(getModelProvider());
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Build a fresh ToolContext whenever the active project changes.
+  const tools = useMemo(() => buildProjectTools(), []);
+
   const toolContext: ToolContext = useMemo(
     () => ({
       project: activeProject,
@@ -104,7 +113,6 @@ export function AgentPanel({ compact = false, title }: AgentPanelProps) {
     [activeProject, loadFileContent, writeFile, refreshPreview, rescanActiveProject],
   );
 
-  // Load the conversation for the active project.
   const loadConversationForProject = useCallback(async () => {
     if (!activeProject) {
       setMessages([]);
@@ -125,22 +133,43 @@ export function AgentPanel({ compact = false, title }: AgentPanelProps) {
     };
   }, [loadConversationForProject]);
 
-  // Auto-scroll to bottom on new messages.
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, busy]);
 
+  // Close popovers on outside click / Escape.
+  useEffect(() => {
+    if (!toolsMenuOpen) return;
+    function onPointerDown(e: MouseEvent) {
+      const target = e.target as Node;
+      const menu = document.querySelector('[data-agent-tools-menu="true"]');
+      if (menu && !menu.contains(target)) setToolsMenuOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setToolsMenuOpen(false);
+    }
+    const t = window.setTimeout(() => {
+      document.addEventListener("mousedown", onPointerDown);
+      document.addEventListener("keydown", onKey);
+    }, 0);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [toolsMenuOpen]);
+
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || busy || !activeProject) return;
+    if (!text || busy) return;
     setInput("");
     setBusy(true);
     try {
-      // Make sure file contents are loaded so tools can read them.
-      await getActiveProjectFiles();
-      const tools = buildProjectTools();
+      if (activeProject) {
+        await getActiveProjectFiles();
+      }
       const newMessages = await runAgentTurn(
         text,
         toolContext,
@@ -150,12 +179,13 @@ export function AgentPanel({ compact = false, title }: AgentPanelProps) {
       );
       const next = [...messages, ...newMessages];
       setMessages(next);
-      await saveConversation({
-        projectId: activeProject.id,
-        messages: next,
-        updatedAt: Date.now(),
-      });
-      // Refresh the provider reference in case the user just configured one.
+      if (activeProject) {
+        await saveConversation({
+          projectId: activeProject.id,
+          messages: next,
+          updatedAt: Date.now(),
+        });
+      }
       setProvider(getModelProvider());
     } catch (err) {
       const errorMsg: AgentMessage = {
@@ -178,50 +208,34 @@ export function AgentPanel({ compact = false, title }: AgentPanelProps) {
   };
 
   return (
-    <div className="flex h-full flex-col bg-card">
-      {/* Header */}
-      <div className="flex h-9 shrink-0 items-center justify-between border-b px-3">
+    <div className="themed flex h-full flex-col bg-surface text-fg">
+      {/* Single header */}
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-line-muted px-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Bot className="h-3.5 w-3.5 shrink-0 text-primary" />
-          <span className="truncate text-xs font-medium">
-            {title ?? "Project Agent"}
-          </span>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {messages.length > 0 ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0"
-              title="Clear conversation"
-              onClick={handleClearConversation}
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
+          <Bot className="h-3.5 w-3.5 shrink-0 text-accent" />
+          <span className="truncate text-xs font-medium">Project Agent</span>
+          {activeProject ? (
+            <span className="hidden truncate text-[10px] text-fg-faint lg:inline">
+              · {activeProject.name}
+            </span>
           ) : null}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0"
-            title="Provider settings"
-            onClick={() => setSettingsOpen(true)}
-          >
-            <Settings2 className="h-3 w-3" />
-          </Button>
         </div>
+        {messages.length > 0 ? (
+          <button
+            type="button"
+            title="Clear conversation"
+            onClick={handleClearConversation}
+            className="focus-ring themed inline-flex h-5 w-5 items-center justify-center rounded text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        ) : null}
       </div>
 
-      {/* Provider status banner */}
+      {/* Provider status (only when no provider configured) */}
       {!provider.configured ? (
-        <div className="border-b border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
-          No model provider configured. The Agent UI is ready, but AI
-          responses are disabled until you connect a provider.{" "}
-          <button
-            className="underline"
-            onClick={() => setSettingsOpen(true)}
-          >
-            Configure
-          </button>
+        <div className="border-b border-amber-500/30 bg-amber-500/5 px-3 py-1.5 text-[10px] text-amber-600 dark:text-amber-400">
+          No model provider configured — agent can use tools on request, but AI replies are disabled.
         </div>
       ) : null}
 
@@ -241,52 +255,116 @@ export function AgentPanel({ compact = false, title }: AgentPanelProps) {
               <MessageRow key={m.id} message={m} />
             ))}
             {busy ? (
-              <li className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Sparkles className="h-3 w-3 animate-pulse" /> Thinking…
+              <li className="flex items-center gap-2 text-[11px] text-fg-muted">
+                <Sparkles className="h-3 w-3 animate-pulse text-accent" /> Thinking…
               </li>
             ) : null}
           </ul>
         )}
       </div>
 
-      {/* Input */}
-      <div className="shrink-0 border-t p-2">
-        <Textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void handleSend();
+      {/* Composer (with model/tools/settings controls at the bottom) */}
+      <div className="shrink-0 border-t border-line-muted bg-surface-2/40 p-2">
+        <div className="themed rounded-md border border-line bg-surface">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void handleSend();
+              }
+            }}
+            placeholder={
+              activeProject
+                ? "Ask about this project, or instruct the agent…"
+                : "Open a project to start a conversation…"
             }
-          }}
-          placeholder={
-            activeProject
-              ? "Ask about this project, or instruct the agent…"
-              : "Open a project first…"
-          }
-          disabled={!activeProject || busy}
-          className="min-h-[60px] resize-none text-xs"
-        />
-        <div className="mt-1.5 flex items-center justify-between">
-          <span className="text-[10px] text-muted-foreground">
-            {activeProject
-              ? `${frameworkLabel(activeProject.framework)} · ${activeProject.fileCount} files · ${formatBytes(activeProject.totalSize)}`
-              : "No project"}
-          </span>
-          <Button
-            size="sm"
-            className="h-7"
-            disabled={!activeProject || busy || !input.trim()}
-            onClick={() => void handleSend()}
-          >
-            <Send className="mr-1.5 h-3 w-3" />
-            Send
-          </Button>
+            disabled={busy}
+            className="block w-full resize-none border-0 bg-transparent px-2.5 py-2 text-xs text-fg placeholder:text-fg-faint focus:outline-none"
+            rows={2}
+          />
+
+          {/* Composer control row */}
+          <div className="flex items-center justify-between gap-1 border-t border-line-muted px-1.5 py-1">
+            <div className="flex min-w-0 items-center gap-0.5">
+              {/* Model / provider selector */}
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                title={`Provider: ${provider.label}`}
+                className={cn(
+                  "focus-ring themed inline-flex h-6 max-w-[140px] items-center gap-1 rounded px-1.5 text-[10px] transition-colors",
+                  provider.configured
+                    ? "text-fg-muted hover:bg-hover hover:text-fg"
+                    : "text-amber-600 dark:text-amber-400",
+                )}
+              >
+                <Cpu className="h-2.5 w-2.5 shrink-0" />
+                <span className="truncate">{provider.configured ? provider.label : "No model"}</span>
+                <ChevronDown className="h-2 w-2 shrink-0" />
+              </button>
+
+              {/* Tools menu */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setToolsMenuOpen((v) => !v)}
+                  title="Available tools"
+                  className="focus-ring themed inline-flex h-6 items-center gap-1 rounded px-1.5 text-[10px] text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+                >
+                  <Wrench className="h-2.5 w-2.5 shrink-0" />
+                  <span className="hidden sm:inline">Tools</span>
+                  <span className="rounded bg-surface-2 px-1 text-[9px] tabular-nums text-fg-faint">{tools.length}</span>
+                  <ChevronDown className="h-2 w-2.5 shrink-0" />
+                </button>
+                {toolsMenuOpen ? (
+                  <div
+                    data-agent-tools-menu="true"
+                    role="menu"
+                    className="themed absolute bottom-full left-0 z-30 mb-1 w-56 rounded-md border border-line bg-overlay p-1 shadow-pop"
+                  >
+                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-fg-faint">
+                      Project-aware tools
+                    </div>
+                    {tools.map((t) => (
+                      <ToolRow key={t.name} tool={t} />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleSend()}
+              disabled={busy || !input.trim()}
+              title="Send (Enter)"
+              className={cn(
+                "focus-ring themed inline-flex h-6 w-6 items-center justify-center rounded transition-colors",
+                input.trim() && !busy
+                  ? "bg-accent text-accent-fg hover:bg-accent-hover"
+                  : "text-fg-faint",
+              )}
+            >
+              <Send className="h-3 w-3" />
+            </button>
+          </div>
         </div>
+
+        {/* Project status (sub-label below the composer) */}
+        {activeProject ? (
+          <div className="mt-1 truncate text-[10px] text-fg-faint">
+            {frameworkLabel(activeProject.framework)} · {activeProject.fileCount} files · {formatBytes(activeProject.totalSize)}
+          </div>
+        ) : null}
       </div>
 
-      <AgentSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} provider={provider} onProviderChange={setProvider} />
+      <AgentSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        provider={provider}
+      />
     </div>
   );
 }
@@ -299,12 +377,12 @@ function EmptyConversation({
   providerConfigured: boolean;
 }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center px-4 text-center text-xs text-muted-foreground">
-      <Bot className="mb-2 h-8 w-8 opacity-50" />
+    <div className="flex h-full flex-col items-center justify-center px-4 text-center text-[11px] text-fg-faint">
+      <Bot className="mb-2 h-7 w-7 opacity-40" />
       {!hasProject ? (
-        <p>No active project. Open one from Project Library to start chatting.</p>
+        <p>No active project. Open one to start a conversation.</p>
       ) : !providerConfigured ? (
-        <p>Agent UI is ready. Connect a model provider to start chatting.</p>
+        <p>Agent UI is ready. Connect a model provider to enable AI replies — or use Tools to inspect the project directly.</p>
       ) : (
         <p>Ask anything about this project. The agent can read files, scan services, edit files, and check the runtime.</p>
       )}
@@ -315,14 +393,14 @@ function EmptyConversation({
 function MessageRow({ message }: { message: AgentMessage }) {
   if (message.role === "tool") {
     return (
-      <li className="rounded-md border bg-muted/40 px-2 py-1.5 text-[11px]">
-        <div className="mb-0.5 flex items-center gap-1 font-medium text-muted-foreground">
-          <Wrench className="h-3 w-3" />
-          Tool result: {message.toolName}
+      <li className="themed rounded-md border border-line-muted bg-surface-2/40 px-2 py-1.5 text-[11px]">
+        <div className="mb-0.5 flex items-center gap-1 font-medium text-fg-muted">
+          <Wrench className="h-3 w-3 text-fg-faint" />
+          Tool result: <code className="font-mono text-[10px] text-fg-faint">{message.toolName}</code>
         </div>
-        <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] text-muted-foreground">
-          {message.content.slice(0, 2000)}
-          {message.content.length > 2000 ? "\n…[truncated]" : ""}
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] text-fg-muted">
+          {message.content.slice(0, 1500)}
+          {message.content.length > 1500 ? "\n…[truncated]" : ""}
         </pre>
       </li>
     );
@@ -335,9 +413,9 @@ function MessageRow({ message }: { message: AgentMessage }) {
         isUser ? "items-end" : "items-start",
       )}
     >
-      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+      <div className="flex items-center gap-1 text-[9px] text-fg-faint">
         {!isUser && !message.fromModel ? (
-          <Badge variant="outline" className="h-4 px-1 text-[9px]">system</Badge>
+          <Badge variant="outline" className="h-3.5 px-1 text-[9px]">system</Badge>
         ) : null}
         {isUser ? "You" : "Agent"}
       </div>
@@ -345,10 +423,10 @@ function MessageRow({ message }: { message: AgentMessage }) {
         className={cn(
           "max-w-[88%] whitespace-pre-wrap break-words rounded-md px-2.5 py-1.5 text-xs",
           isUser
-            ? "bg-primary text-primary-foreground"
+            ? "bg-accent text-accent-fg"
             : message.fromModel
-            ? "bg-muted"
-            : "bg-muted/50 italic",
+            ? "bg-surface-2 text-fg"
+            : "bg-surface-2/60 text-fg-muted italic",
         )}
       >
         {message.content}
@@ -357,32 +435,55 @@ function MessageRow({ message }: { message: AgentMessage }) {
   );
 }
 
+function ToolRow({ tool }: { tool: AgentTool }) {
+  return (
+    <div
+      role="menuitem"
+      className="themed rounded-sm px-2 py-1.5 text-left text-[11px]"
+    >
+      <div className="flex items-center gap-1.5">
+        <Plus className="h-2.5 w-2.5 shrink-0 text-fg-faint" />
+        <code className="font-mono text-[10px] text-fg">{tool.name}</code>
+      </div>
+      <p className="mt-0.5 pl-4 text-[10px] text-fg-faint">{tool.description}</p>
+    </div>
+  );
+}
+
 function AgentSettingsDialog({
   open,
   onOpenChange,
   provider,
-  onProviderChange,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   provider: ReturnType<typeof getModelProvider>;
-  onProviderChange: (p: ReturnType<typeof getModelProvider>) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Agent provider</DialogTitle>
+      <DialogContent showCloseButton={false}>
+        <DialogHeader className="flex-row items-center justify-between border-b border-line-muted px-4 py-2.5">
+          <DialogTitle className="flex items-center gap-2 text-sm">
+            <Cpu className="h-4 w-4" /> Agent provider
+          </DialogTitle>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            aria-label="Close"
+            className="focus-ring themed inline-flex h-6 w-6 items-center justify-center rounded text-fg-muted hover:bg-hover hover:text-fg"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </DialogHeader>
-        <div className="space-y-3 text-sm">
-          <div className="rounded-md border bg-muted/40 p-3">
-            <p className="font-medium">{provider.label}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
+        <div className="space-y-3 px-4 py-4 text-sm">
+          <div className="themed rounded-md border border-line bg-surface px-3 py-2">
+            <p className="font-medium text-fg">{provider.label}</p>
+            <p className="mt-1 text-xs text-fg-muted">
               Status: {provider.configured ? "Configured" : "Not configured"}
               {" · "}ID: <code className="font-mono">{provider.id}</code>
             </p>
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-fg-muted">
             The LUCIAN Project Agent is provider-independent. To connect a real
             model (OpenAI, Anthropic, a local LLM, etc.), implement the{" "}
             <code>ModelProvider</code> interface from{" "}
@@ -391,16 +492,14 @@ function AgentSettingsDialog({
             built-in provider configuration UI; for now, the agent honestly
             refuses to fabricate responses when no provider is registered.
           </p>
-          <p className="text-xs text-muted-foreground">
-            Available project-aware tools: <code>list_files</code>,{" "}
-            <code>read_file</code>, <code>write_file</code>,{" "}
-            <code>scan_project</code>, <code>get_framework</code>,{" "}
-            <code>get_runtime_status</code>, <code>get_terminal_output</code>,{" "}
-            <code>summarize_structure</code>.
+          <p className="text-xs text-fg-muted">
+            Available project-aware tools are listed in the Tools menu next to
+            the composer. Each tool runs against the active project and
+            returns real results — never fabricated.
           </p>
           <div className="flex justify-end">
             <Button size="sm" onClick={() => onOpenChange(false)}>
-              <X className="mr-1.5 h-3 w-3" /> Close
+              Close
             </Button>
           </div>
         </div>

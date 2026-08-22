@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
-import { Zap, Eye, Bot } from "lucide-react";
+import { Zap, Eye } from "lucide-react";
 import { FileExplorer } from "./file-explorer";
 import { CodeEditorPane } from "./code-editor-pane";
 import { PreviewPane } from "./preview-pane";
@@ -30,16 +30,10 @@ export function WorkspaceView() {
       <WorkspaceToolbar />
       <div className="flex-1 overflow-hidden">
         <PanelGroup direction="horizontal">
-          {/* Agent panel (left) */}
+          {/* Agent panel (left) — single header lives inside AgentPanel itself */}
           <Panel defaultSize={18} minSize={12} maxSize={32}>
-            <div className="flex h-full flex-col">
-              <div className="flex h-8 shrink-0 items-center gap-1.5 border-b bg-card px-2">
-                <Bot className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-medium">Project Agent</span>
-              </div>
-              <div className="min-h-0 flex-1 overflow-hidden">
-                <AgentPanel compact title="Project Agent" />
-              </div>
+            <div className="h-full overflow-hidden">
+              <AgentPanel />
             </div>
           </Panel>
           <PanelResizeHandle className="w-1 bg-border hover:bg-primary/30 transition-colors" />

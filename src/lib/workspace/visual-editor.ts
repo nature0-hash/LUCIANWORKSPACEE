@@ -57,79 +57,250 @@ export interface VisualNode {
   attributes: Record<string, string>;
 }
 
-/** Result of attempting to find an HTML entry point for a project. */
-export interface VisualEditorReadiness {
-  /** True when the editor can be opened. */
-  ready: boolean;
-  /** Why it can't be opened (when ready=false). */
-  reason?: string;
-  /** The HTML file that should be rendered in the canvas. */
-  entryFile?: string;
-  /** Whether this project supports full source mapping. */
-  support: "full" | "limited" | "none";
-  /** Human-readable label for the support level. */
-  supportLabel: string;
-  /** Honest explanation of what the user can do. */
-  explanation: string;
+/**
+ * The mode the Visual Editor should run in for the active project.
+ *
+ * - `live-canvas`  → the project can be rendered in an iframe; visual edits
+ *                    write back to the real source via the DOMParser-based
+ *                    patcher.
+ * - `direct-edit`  → the project cannot currently be rendered (no HTML
+ *                    entry, broken structure, missing deps, etc.). The
+ *                    editor stays useful: shows the project's file tree,
+ *                    framework, routes/pages, components, styles, assets,
+ *                    and a diagnostics panel. Source edits go through the
+ *                    Code editor + Agent.
+ *
+ * The editor NEVER refuses to open a project — `direct-edit` is the
+ * honest fallback when live rendering is unavailable.
+ */
+export type VisualEditorMode = "live-canvas" | "direct-edit";
+
+/**
+ * A diagnostic item surfaced to the user in Direct Edit mode. Each one
+ * represents something we honestly noticed about the project — missing
+ * entry, broken structure, missing deps, etc. — paired with a suggested
+ * next action.
+ */
+export interface DiagnosticItem {
+  /** Severity — info / warning / error. */
+  severity: "info" | "warning" | "error";
+  /** Short label. */
+  label: string;
+  /** What we noticed. */
+  detail: string;
+  /** Suggested next action. */
+  action?: string;
 }
 
 /**
- * Inspect the loaded project and decide whether the Visual Editor can
- * open it. We never pretend to support a project type we can't actually
- * edit.
+ * Structured analysis of a project. The Visual Editor uses this to decide
+ * its mode and what to show in the left panel + diagnostics tab.
  */
-export function checkVisualEditorReadiness(
-  project: Project | null,
-): VisualEditorReadiness {
-  if (!project) {
-    return {
-      ready: false,
-      reason: "No active project.",
-      support: "none",
-      supportLabel: "No project",
-      explanation: "Open a project from the Project Library first.",
-    };
-  }
+export interface ProjectAnalysis {
+  /** The mode to operate in. */
+  mode: VisualEditorMode;
+  /** Human-readable label for the mode badge. */
+  modeLabel: string;
+  /** The HTML file to render in the canvas (when mode = "live-canvas"). */
+  entryFile?: string;
+  /** Source-mapping support level (full for HTML, limited for JSX/TSX). */
+  sourceMapping: "full" | "limited" | "none";
+  /** Honest explanation of what the user can do. */
+  explanation: string;
+  /** Detected HTML files in the project (any framework). */
+  htmlFiles: string[];
+  /** Detected CSS / style files. */
+  styleFiles: string[];
+  /** Detected JavaScript / TypeScript source files (component files). */
+  componentFiles: string[];
+  /** Detected image / font / binary assets. */
+  assetFiles: string[];
+  /** Detected config files (package.json, vite.config, next.config, etc.). */
+  configFiles: string[];
+  /** Detected route / page entries (best-effort heuristic). */
+  routes: string[];
+  /** Honest diagnostics — never empty in direct-edit mode. */
+  diagnostics: DiagnosticItem[];
+}
+
+/**
+ * Analyze a project and produce a `ProjectAnalysis`. NEVER returns a
+ * blocking state — if the project can't render, we set mode="direct-edit"
+ * and surface honest diagnostics + suggested actions.
+ *
+ * The user spec is explicit: a project should NOT need index.html before
+ * the Visual Editor becomes useful.
+ */
+export function analyzeProject(project: Project | null): ProjectAnalysis | null {
+  if (!project) return null;
+
   const fw = project.framework;
-  // Find an HTML entry file (prefer index.html at root, then any .html).
-  const htmlFiles = project.files
+  const all = project.files;
+
+  // Categorize files by extension + path patterns.
+  const htmlFiles = all
     .filter((f) => !f.binary && f.path.endsWith(".html"))
     .map((f) => f.path)
     .sort((a, b) => (a === "index.html" ? -1 : b === "index.html" ? 1 : a.localeCompare(b)));
-  if (htmlFiles.length === 0) {
+  const styleFiles = all
+    .filter((f) => !f.binary && /\.(css|scss|sass|less|styl)$/.test(f.path))
+    .map((f) => f.path)
+    .sort();
+  const componentFiles = all
+    .filter(
+      (f) =>
+        !f.binary &&
+        /\.(jsx?|tsx?|vue|svelte|astro)$/.test(f.path) &&
+        !f.path.startsWith("node_modules/"),
+    )
+    .map((f) => f.path)
+    .sort();
+  const assetFiles = all.filter((f) => f.binary).map((f) => f.path).sort();
+  const configFiles = all
+    .filter((f) =>
+      [
+        "package.json",
+        "vite.config.js",
+        "vite.config.mjs",
+        "vite.config.ts",
+        "next.config.js",
+        "next.config.mjs",
+        "next.config.ts",
+        "tsconfig.json",
+        "jsconfig.json",
+        "tailwind.config.js",
+        "tailwind.config.ts",
+        ".env",
+        ".env.local",
+        ".env.example",
+      ].includes(f.path),
+    )
+    .map((f) => f.path)
+    .sort();
+  // Route detection — best-effort heuristic. We treat any file under
+  // app/, pages/, src/pages/, src/app/ as a route candidate.
+  const routes = all
+    .filter(
+      (f) =>
+        !f.binary &&
+        (
+          /^src\/app\/.*\/page\.(jsx?|tsx?)$/.test(f.path) ||
+          /^app\/.*\/page\.(jsx?|tsx?)$/.test(f.path) ||
+          /^src\/pages\/.*\.(jsx?|tsx?)$/.test(f.path) ||
+          /^pages\/.*\.(jsx?|tsx?)$/.test(f.path) ||
+          /^src\/App\.(jsx?|tsx?)$/.test(f.path) ||
+          /^src\/main\.(jsx?|tsx?)$/.test(f.path)
+        ),
+    )
+    .map((f) => f.path)
+    .sort();
+
+  // Build diagnostics.
+  const diagnostics: DiagnosticItem[] = [];
+
+  // Mode decision: we need an HTML file (or be able to construct one from
+  // a component entry) to render in the canvas iframe. If we have one,
+  // we can do live-canvas. Otherwise we drop into direct-edit.
+  const hasHtml = htmlFiles.length > 0;
+  const hasComponents = componentFiles.length > 0;
+  const hasPackageJson = configFiles.includes("package.json");
+
+  if (hasHtml) {
+    // We have an HTML entry → live-canvas mode.
+    const isHtmlProject = fw === "html" || fw === "static";
+    const sourceMapping: "full" | "limited" | "none" = isHtmlProject
+      ? "full"
+      : hasComponents
+      ? "limited"
+      : "full";
+    const modeLabel = isHtmlProject
+      ? "Live Canvas"
+      : `Live Canvas · ${sourceMapping === "limited" ? "limited source mapping" : "full source mapping"}`;
+    const explanation = isHtmlProject
+      ? "HTML/CSS/JS project. Visual edits modify the real HTML/CSS source files directly."
+      : `Component-based project (${fw}). The Visual Editor renders the preview iframe and supports element selection + inline text/style edits. Structural JSX edits should be made in the Code editor.`;
+    if (!isHtmlProject) {
+      diagnostics.push({
+        severity: "info",
+        label: "Component framework detected",
+        detail: `This looks like a ${fw} project. The canvas renders the HTML entry, but source patches use string matching rather than AST transforms.`,
+        action: "For structural JSX edits, use the Workspace Code editor or ask the Agent.",
+      });
+    }
+    if (!hasPackageJson && hasComponents) {
+      diagnostics.push({
+        severity: "warning",
+        label: "No package.json",
+        detail: "Component files exist but no package.json was found. Dependency installation will fail.",
+        action: "Add a package.json with the project's dependencies.",
+      });
+    }
     return {
-      ready: false,
-      reason: "This project has no HTML entry file. The Visual Editor cannot render it.",
-      support: "none",
-      supportLabel: "Not supported",
-      explanation:
-        "The Visual Editor requires an HTML file (e.g. index.html) as the canvas entry point. " +
-        "This project does not appear to have one — it may be a backend-only Node project. " +
-        "Use the Workspace's Live Runtime pane instead.",
-    };
-  }
-  // HTML projects get full support; React/Vue/Next/Vite get limited support.
-  if (fw === "html" || fw === "static") {
-    return {
-      ready: true,
+      mode: "live-canvas",
+      modeLabel,
       entryFile: htmlFiles[0],
-      support: "full",
-      supportLabel: "Full source mapping",
-      explanation:
-        "HTML/CSS/JS project. Visual edits modify the real HTML/CSS source files directly. Selection maps to source location; property changes are written back to disk.",
+      sourceMapping,
+      explanation,
+      htmlFiles,
+      styleFiles,
+      componentFiles,
+      assetFiles,
+      configFiles,
+      routes,
+      diagnostics,
     };
   }
+
+  // No HTML entry → Direct Edit mode. We still surface everything we can
+  // honestly understand about the project so the user can work with it.
+  diagnostics.push({
+    severity: "warning",
+    label: "No HTML entry file",
+    detail:
+      "Live rendering requires an HTML entry (e.g. index.html). This project doesn't have one — Direct Edit mode is active.",
+    action:
+      hasComponents && hasPackageJson
+        ? "Run the project in Workspace → Live Runtime to generate a preview, or add an index.html that mounts the root component."
+        : "Add an index.html entry, or import a project that has one.",
+  });
+  if (hasComponents && !hasPackageJson) {
+    diagnostics.push({
+      severity: "error",
+      label: "Missing package.json",
+      detail: "Component files exist but no package.json. The runtime cannot install dependencies.",
+      action: "Add a package.json listing the project's dependencies.",
+    });
+  }
+  if (hasComponents && hasPackageJson && routes.length === 0) {
+    diagnostics.push({
+      severity: "info",
+      label: "No routes detected",
+      detail: "Component files exist but no Next.js app/pages router or Vite src/App entry was found.",
+      action: "If this is a Next.js project, ensure files live under app/ or pages/. If Vite, ensure src/App.tsx or src/main.tsx exists.",
+    });
+  }
+  if (!hasComponents && !hasHtml) {
+    diagnostics.push({
+      severity: "info",
+      label: "Empty or unrecognized project",
+      detail: "No HTML files and no component files were found. The project may be empty, or only contain assets/config.",
+      action: "Import a real project, or use the composer below to upload files / a folder.",
+    });
+  }
+
   return {
-    ready: true,
-    entryFile: htmlFiles[0],
-    support: "limited",
-    supportLabel: "Limited — string-match source patching",
+    mode: "direct-edit",
+    modeLabel: "Direct Edit",
+    sourceMapping: "none",
     explanation:
-      "Component-based project (" + fw + "). The Visual Editor can render the " +
-      "preview iframe and select elements, but source patches use string matching " +
-      "rather than AST transforms. Structural JSX edits (adding/removing elements) " +
-      "are out of scope for this phase. Inline text, className, and style edits on " +
-      "leaf elements work; complex prop/state changes should be made in the Code editor.",
+      "Live rendering is not available yet. Direct Edit mode is active — you can browse the project's files, components, styles, assets, and diagnostics below. Use the Agent to ask questions or request changes.",
+    htmlFiles,
+    styleFiles,
+    componentFiles,
+    assetFiles,
+    configFiles,
+    routes,
+    diagnostics,
   };
 }
 

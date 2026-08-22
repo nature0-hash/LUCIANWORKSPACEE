@@ -2,48 +2,56 @@
 
 // Visual Editor Studio — main view.
 //
-// Three-pane layout:
+// Three-pane layout when a project is loaded:
 //   ┌───────────────┬─────────────────────────────┬───────────────┐
 //   │ Pages/Layers/ │      Visual Canvas          │  Agent / Style│
-//   │   Assets      │  (live project preview +    │               │
-//   │               │   click-to-select)          │               │
+//   │ Assets/Files  │  (live preview + click-     │               │
+//   │ /Context      │   to-select, OR direct-edit  │               │
+//   │               │   when no rendering)        │               │
 //   └───────────────┴─────────────────────────────┴───────────────┘
 //
-// The Agent (right) is the SAME Project Agent used in the Workspace —
-// same conversation, same context. The right pane alternates between
-// the Agent and the Style inspector.
+// When NO project is loaded → Start Workspace (composer).
+// When project can't render → Direct Edit canvas (never refuses).
+// When project can render  → Live Canvas with element selection.
 
 import { useCallback, useMemo, useState } from "react";
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
-import { Bot, FolderOpen, Sliders, Wand2 } from "lucide-react";
-import { Button } from "@/components/ui-devspace/button";
-import { Card } from "@/components/ui-devspace/card";
-import { Badge } from "@/components/ui-devspace/badge";
+import {
+  Bot,
+  FileCode2,
+  FileText,
+  FolderOpen,
+  ImageIcon,
+  Layers as LayersIcon,
+  Sliders,
+  Wand2,
+} from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import {
-  checkVisualEditorReadiness,
+  analyzeProject,
   type VisualNode,
 } from "@/lib/workspace/visual-editor";
 import { VisualCanvas } from "./visual-canvas";
+import { DirectEditCanvas } from "./direct-edit-canvas";
 import { LayersPanel } from "./layers-panel";
 import { StyleInspector } from "./style-inspector";
 import { AgentPanel } from "@/components/devspace/agent/agent-panel";
+import { VisualEditorStartWorkspace } from "./visual-editor-start-workspace";
 import { cn } from "@/lib/utils";
 
-type LeftTab = "pages" | "layers" | "assets";
+type LeftTab = "pages" | "layers" | "assets" | "files";
 type RightTab = "agent" | "style";
 
 export function VisualEditorView() {
   const activeProject = useWorkspaceStore((s) => s.activeProject);
-  const setView = useWorkspaceStore((s) => s.setView);
 
   const [leftTab, setLeftTab] = useState<LeftTab>("layers");
   const [rightTab, setRightTab] = useState<RightTab>("style");
   const [rootNode, setRootNode] = useState<VisualNode | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const readiness = useMemo(
-    () => checkVisualEditorReadiness(activeProject),
+  const analysis = useMemo(
+    () => analyzeProject(activeProject),
     [activeProject],
   );
 
@@ -57,132 +65,101 @@ export function VisualEditorView() {
   }, []);
 
   const handlePatched = useCallback(() => {
-    // Source was patched; clear the cached tree so the next inspection refreshes.
     setRootNode(null);
   }, []);
 
-  // Find the selected VisualNode from the tree.
   const selectedNode = useMemo(() => {
     if (!rootNode || !selectedId) return null;
     return findNode(rootNode, selectedId);
   }, [rootNode, selectedId]);
 
-  // No active project → empty state.
-  if (!activeProject) {
-    return (
-      <div className="flex h-full items-center justify-center p-8">
-        <Card className="flex max-w-md flex-col items-center justify-center gap-4 p-12 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-            <Wand2 className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold">No project loaded</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Open a project from Project Library to start visually editing it.
-            </p>
-          </div>
-          <Button onClick={() => setView("library")}>
-            <FolderOpen className="mr-2 h-4 w-4" /> Go to Project Library
-          </Button>
-        </Card>
-      </div>
-    );
+  // No active project → Start Workspace (composer).
+  if (!activeProject || !analysis) {
+    return <VisualEditorStartWorkspace />;
   }
 
-  // Project doesn't support the visual editor.
-  if (!readiness.ready) {
-    return (
-      <div className="flex h-full items-center justify-center p-8">
-        <Card className="flex max-w-md flex-col gap-3 p-8">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10">
-            <Wand2 className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-          </div>
-          <h3 className="text-base font-semibold">
-            Visual Editor is unavailable for this project
-          </h3>
-          <p className="text-sm text-muted-foreground">{readiness.reason}</p>
-          <p className="text-xs text-muted-foreground">{readiness.explanation}</p>
-          <Button variant="outline" size="sm" onClick={() => setView("workspace")}>
-            Switch to Workspace
-          </Button>
-        </Card>
-      </div>
-    );
-  }
+  // Project loaded — choose canvas based on analysis mode.
+  const isLiveCanvas = analysis.mode === "live-canvas";
 
   return (
     <div className="flex h-full flex-col">
-      {/* Support badge */}
-      <div className="flex h-8 shrink-0 items-center justify-between border-b bg-card px-3">
+      {/* Mode badge bar */}
+      <div className="flex h-8 shrink-0 items-center justify-between border-b border-line-muted bg-surface-2/40 px-3">
         <div className="flex items-center gap-2 text-xs">
-          <Wand2 className="h-3.5 w-3.5 text-primary" />
-          <span className="font-medium">Visual Editor Studio</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-muted-foreground">{activeProject.name}</span>
+          <Wand2 className="h-3.5 w-3.5 text-accent" />
+          <span className="font-medium text-fg">Visual Editor Studio</span>
+          <span className="text-fg-faint">·</span>
+          <span className="text-fg-muted">{activeProject.name}</span>
         </div>
-        <Badge variant={readiness.support === "full" ? "default" : "secondary"}>
-          {readiness.supportLabel}
-        </Badge>
+        <span
+          className={cn(
+            "rounded px-1.5 py-0.5 text-[10px] font-medium",
+            isLiveCanvas
+              ? "bg-[color-mix(in_srgb,var(--accent)_15%,transparent)] text-accent"
+              : "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+          )}
+        >
+          {analysis.modeLabel}
+        </span>
       </div>
 
       {/* Three-pane layout */}
       <div className="min-h-0 flex-1 overflow-hidden">
         <PanelGroup direction="horizontal">
-          {/* LEFT: Pages / Layers / Assets */}
+          {/* LEFT: Pages / Layers / Assets / Files */}
           <Panel defaultSize={18} minSize={12} maxSize={28}>
             <div className="flex h-full flex-col">
-              {/* Tab strip */}
-              <div className="flex h-8 shrink-0 items-center gap-0.5 border-b bg-card px-1">
-                <LeftTabBtn
-                  active={leftTab === "pages"}
-                  onClick={() => setLeftTab("pages")}
-                  label="Pages"
-                />
-                <LeftTabBtn
-                  active={leftTab === "layers"}
-                  onClick={() => setLeftTab("layers")}
-                  label="Layers"
-                />
-                <LeftTabBtn
-                  active={leftTab === "assets"}
-                  onClick={() => setLeftTab("assets")}
-                  label="Assets"
-                />
+              <div className="flex h-8 shrink-0 items-center gap-0.5 border-b border-line-muted bg-surface-2/40 px-1">
+                <LeftTabBtn active={leftTab === "pages"} onClick={() => setLeftTab("pages")} icon={FileText} label="Pages" />
+                <LeftTabBtn active={leftTab === "layers"} onClick={() => setLeftTab("layers")} icon={LayersIcon} label="Layers" disabled={!isLiveCanvas} />
+                <LeftTabBtn active={leftTab === "assets"} onClick={() => setLeftTab("assets")} icon={ImageIcon} label="Assets" />
+                <LeftTabBtn active={leftTab === "files"} onClick={() => setLeftTab("files")} icon={FolderOpen} label="Files" />
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {leftTab === "pages" ? (
-                  <PagesPanel
-                    entryFile={readiness.entryFile!}
-                  />
+                  <PagesPanel analysis={analysis} />
                 ) : leftTab === "layers" ? (
-                  <LayersPanel
-                    root={rootNode}
-                    selectedId={selectedId}
-                    onSelect={handleSelect}
-                  />
-                ) : (
+                  isLiveCanvas ? (
+                    <LayersPanel
+                      root={rootNode}
+                      selectedId={selectedId}
+                      onSelect={handleSelect}
+                    />
+                  ) : (
+                    <DisabledPanel
+                      label="Layers available in Live Canvas mode"
+                      hint="Switch to a project with an HTML entry to enable element selection."
+                    />
+                  )
+                ) : leftTab === "assets" ? (
                   <AssetsPanel />
+                ) : (
+                  <FilesContextPanel analysis={analysis} />
                 )}
               </div>
             </div>
           </Panel>
           <PanelResizeHandle className="w-1 bg-border hover:bg-primary/30 transition-colors" />
 
-          {/* CENTER: Canvas */}
+          {/* CENTER: Canvas (Live or Direct Edit) */}
           <Panel defaultSize={56} minSize={30}>
-            <VisualCanvas
-              entryFile={readiness.entryFile!}
-              onInspection={handleInspection}
-              onSelect={handleSelect}
-              selectedId={selectedId}
-            />
+            {isLiveCanvas && analysis.entryFile ? (
+              <VisualCanvas
+                entryFile={analysis.entryFile}
+                onInspection={handleInspection}
+                onSelect={handleSelect}
+                selectedId={selectedId}
+              />
+            ) : (
+              <DirectEditCanvas analysis={analysis} />
+            )}
           </Panel>
           <PanelResizeHandle className="w-1 bg-border hover:bg-primary/30 transition-colors" />
 
           {/* RIGHT: Agent / Style */}
           <Panel defaultSize={26} minSize={18}>
             <div className="flex h-full flex-col">
-              <div className="flex h-8 shrink-0 items-center gap-0.5 border-b bg-card px-1">
+              <div className="flex h-8 shrink-0 items-center gap-0.5 border-b border-line-muted bg-surface-2/40 px-1">
                 <RightTabBtn
                   active={rightTab === "style"}
                   onClick={() => setRightTab("style")}
@@ -198,15 +175,22 @@ export function VisualEditorView() {
               </div>
               <div className="min-h-0 flex-1 overflow-hidden">
                 {rightTab === "style" ? (
-                  <div className="h-full overflow-y-auto">
-                    <StyleInspector
-                      node={selectedNode}
-                      entryFile={readiness.entryFile!}
-                      onPatched={handlePatched}
+                  isLiveCanvas && analysis.entryFile ? (
+                    <div className="h-full overflow-y-auto">
+                      <StyleInspector
+                        node={selectedNode}
+                        entryFile={analysis.entryFile}
+                        onPatched={handlePatched}
+                      />
+                    </div>
+                  ) : (
+                    <DisabledPanel
+                      label="Style inspector needs Live Canvas"
+                      hint="Direct Edit mode doesn't expose element selection. Use the Agent or the Workspace Code editor."
                     />
-                  </div>
+                  )
                 ) : (
-                  <AgentPanel compact title="Project Agent" />
+                  <AgentPanel />
                 )}
               </div>
             </div>
@@ -220,23 +204,32 @@ export function VisualEditorView() {
 function LeftTabBtn({
   active,
   onClick,
+  icon: Icon,
   label,
+  disabled,
 }: {
   active: boolean;
   onClick: () => void;
+  icon: typeof FileText;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
+      title={disabled ? `${label} (not available in Direct Edit mode)` : label}
       className={cn(
-        "flex-1 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors",
+        "flex flex-1 items-center justify-center gap-1 rounded-sm px-1.5 py-1 text-[11px] font-medium transition-colors",
         active
-          ? "bg-primary text-primary-foreground"
-          : "text-muted-foreground hover:bg-accent hover:text-foreground",
+          ? "bg-accent text-accent-fg"
+          : disabled
+          ? "text-fg-faint/50"
+          : "text-fg-muted hover:bg-hover hover:text-fg",
       )}
     >
-      {label}
+      <Icon className="h-3 w-3" />
+      <span className="hidden truncate sm:inline">{label}</span>
     </button>
   );
 }
@@ -258,8 +251,8 @@ function RightTabBtn({
       className={cn(
         "flex flex-1 items-center justify-center gap-1.5 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors",
         active
-          ? "bg-primary text-primary-foreground"
-          : "text-muted-foreground hover:bg-accent hover:text-foreground",
+          ? "bg-accent text-accent-fg"
+          : "text-fg-muted hover:bg-hover hover:text-fg",
       )}
     >
       <Icon className="h-3 w-3" />
@@ -268,59 +261,106 @@ function RightTabBtn({
   );
 }
 
-function PagesPanel({ entryFile }: { entryFile: string }) {
-  // Pages = all HTML files in the project. We let the user switch which
-  // page the canvas shows in a future iteration; for now we just list
-  // them and highlight the active entry.
-  const project = useWorkspaceStore((s) => s.activeProject);
-  if (!project) return null;
-  const htmlFiles = project.files.filter(
-    (f) => !f.binary && f.path.endsWith(".html"),
-  );
+function PagesPanel({
+  analysis,
+}: {
+  analysis: import("@/lib/workspace/visual-editor").ProjectAnalysis;
+}) {
+  // Pages = all HTML files in the project.
+  if (analysis.htmlFiles.length === 0) {
+    return (
+      <DisabledPanel
+        label="No HTML pages"
+        hint="This project doesn't have an HTML entry file. Direct Edit mode is active."
+      />
+    );
+  }
   return (
-    <ul className="space-y-0.5 p-2 text-xs">
-      {htmlFiles.map((f) => (
+    <ul className="space-y-0.5 p-1.5 text-xs">
+      {analysis.htmlFiles.map((p) => (
         <li
-          key={f.path}
+          key={p}
           className={cn(
             "flex items-center gap-2 rounded-md px-2 py-1.5",
-            f.path === entryFile
-              ? "bg-primary/15 text-foreground"
-              : "text-muted-foreground hover:bg-accent",
+            p === analysis.entryFile
+              ? "bg-[color-mix(in_srgb,var(--accent)_15%,transparent)] text-fg"
+              : "text-fg-muted hover:bg-hover hover:text-fg",
           )}
+          title={p}
         >
-          <span className="truncate font-mono text-[11px]">{f.path}</span>
+          <FileText className="h-3 w-3 shrink-0 text-fg-faint" />
+          <span className="truncate font-mono text-[11px]">{p}</span>
         </li>
       ))}
-      {htmlFiles.length === 0 ? (
-        <li className="px-2 py-1.5 text-muted-foreground">No HTML files</li>
-      ) : null}
     </ul>
   );
 }
 
 function AssetsPanel() {
-  // Assets = binary files (images, fonts) in the project.
   const project = useWorkspaceStore((s) => s.activeProject);
   if (!project) return null;
   const assets = project.files.filter((f) => f.binary);
+  if (assets.length === 0) {
+    return (
+      <DisabledPanel label="No assets" hint="No binary files in this project." />
+    );
+  }
   return (
-    <ul className="space-y-0.5 p-2 text-xs">
+    <ul className="space-y-0.5 p-1.5 text-xs">
       {assets.map((f) => (
         <li
           key={f.path}
-          className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-muted-foreground hover:bg-accent"
+          className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-fg-muted hover:bg-hover hover:text-fg"
         >
-          <span className="truncate font-mono text-[11px]">{f.path}</span>
-          <span className="shrink-0 text-[10px] text-muted-foreground">
+          <span className="flex min-w-0 items-center gap-2">
+            <ImageIcon className="h-3 w-3 shrink-0 text-fg-faint" />
+            <span className="truncate font-mono text-[11px]">{f.path}</span>
+          </span>
+          <span className="shrink-0 text-[10px] text-fg-faint">
             {(f.size / 1024).toFixed(1)} KB
           </span>
         </li>
       ))}
-      {assets.length === 0 ? (
-        <li className="px-2 py-1.5 text-muted-foreground">No binary assets</li>
+    </ul>
+  );
+}
+
+function FilesContextPanel({
+  analysis,
+}: {
+  analysis: import("@/lib/workspace/visual-editor").ProjectAnalysis;
+}) {
+  // Files/Context = a flat overview of all source files (no full tree here;
+  // the Workspace's File Explorer is the canonical tree view).
+  const project = useWorkspaceStore((s) => s.activeProject);
+  if (!project) return null;
+  const sourceFiles = project.files.filter((f) => !f.binary);
+  return (
+    <ul className="space-y-0.5 p-1.5 text-xs">
+      {sourceFiles.slice(0, 100).map((f) => (
+        <li
+          key={f.path}
+          className="flex items-center gap-2 rounded-md px-2 py-1 text-fg-muted hover:bg-hover hover:text-fg"
+        >
+          <FileCode2 className="h-3 w-3 shrink-0 text-fg-faint" />
+          <span className="truncate font-mono text-[11px]">{f.path}</span>
+        </li>
+      ))}
+      {sourceFiles.length > 100 ? (
+        <li className="px-2 py-1 text-[10px] text-fg-faint">
+          +{sourceFiles.length - 100} more files — use Workspace for the full tree.
+        </li>
       ) : null}
     </ul>
+  );
+}
+
+function DisabledPanel({ label, hint }: { label: string; hint?: string }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center p-4 text-center">
+      <p className="text-[11px] font-medium text-fg-faint">{label}</p>
+      {hint ? <p className="mt-1 text-[10px] text-fg-faint/80">{hint}</p> : null}
+    </div>
   );
 }
 
