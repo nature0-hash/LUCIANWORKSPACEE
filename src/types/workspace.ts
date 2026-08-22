@@ -92,7 +92,12 @@ export type DetectedFramework =
   | "unknown";
 
 /** View routes — client-side navigation inside DevWorkspace. */
-export type AppView = "library" | "workspace" | "visual-editor" | "converter";
+export type AppView =
+  | "library"
+  | "workspace"
+  | "visual-editor"
+  | "vector-studio"
+  | "converter";
 
 export interface OpenTab {
   path: string;

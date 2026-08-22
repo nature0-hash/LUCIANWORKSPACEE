@@ -8,7 +8,7 @@
 // via a gear icon here, but LUCIAN already has a global Settings system
 // (in the profile dropdown), so the gear icon is intentionally omitted.
 
-import { FolderOpen, Code2, Repeat, HardDrive, Wand2 } from "lucide-react";
+import { FolderOpen, Code2, Repeat, HardDrive, Wand2, Spline } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { Button } from "@/components/ui-devspace/button";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   { id: "library" as const, label: "Project Library", icon: FolderOpen },
   { id: "workspace" as const, label: "Workspace", icon: Code2 },
   { id: "visual-editor" as const, label: "Visual Editor Studio", icon: Wand2 },
+  { id: "vector-studio" as const, label: "Vector Studio", icon: Spline },
   { id: "converter" as const, label: "Code Converter", icon: Repeat },
 ];
 
@@ -39,16 +40,16 @@ export function TopNavigation() {
 
   return (
     <>
-      <header className="themed flex h-14 shrink-0 items-center justify-between border-b border-line-muted bg-surface-2/60 px-4">
+      <header className="themed flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line-muted bg-surface-2/60 px-4">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="themed flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-fg">
+          <div className="themed flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-fg">
             <Code2 className="h-4 w-4" />
           </div>
-          <span className="text-base font-semibold tracking-tight text-fg">
+          <span className="hidden text-base font-semibold tracking-tight text-fg xl:inline">
             DevWorkspace
           </span>
           {activeProject && (
-            <span className="ml-3 hidden min-w-0 items-center gap-2 text-sm text-fg-muted md:inline">
+            <span className="ml-1 hidden min-w-0 items-center gap-2 text-sm text-fg-muted lg:inline">
               <span className="text-fg-faint">/</span>
               <span className="truncate font-medium text-fg">
                 {activeProject.name}
@@ -57,7 +58,7 @@ export function TopNavigation() {
           )}
         </div>
 
-        <nav className="flex items-center gap-1">
+        <nav className="flex min-w-0 flex-1 items-center justify-center gap-0.5">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = view === item.id;
@@ -66,11 +67,11 @@ export function TopNavigation() {
                 key={item.id}
                 variant={isActive ? "default" : "ghost"}
                 size="sm"
-                className={cn("gap-2", isActive ? "" : "text-fg-muted")}
+                className={cn("gap-1.5 px-2.5", isActive ? "" : "text-fg-muted")}
                 onClick={() => setView(item.id)}
               >
-                <Icon className="h-4 w-4" />
-                <span className="hidden sm:inline">{item.label}</span>
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden truncate md:inline">{item.label}</span>
               </Button>
             );
           })}
@@ -81,10 +82,10 @@ export function TopNavigation() {
           onClick={() => setStorageOpen(true)}
           title="Open Storage Manager"
           aria-label="Open Storage Manager"
-          className="focus-ring themed hidden items-center gap-2 rounded-md border border-line bg-surface px-2.5 py-1.5 text-xs text-fg-muted transition-colors hover:bg-hover hover:text-fg lg:flex"
+          className="focus-ring themed hidden shrink-0 items-center gap-1.5 rounded-md border border-line bg-surface px-2 py-1.5 text-[11px] text-fg-muted transition-colors hover:bg-hover hover:text-fg xl:flex"
         >
           <HardDrive className="h-3.5 w-3.5" />
-          <span>
+          <span className="font-mono">
             {formatBytes(storage.usage)}
             {storage.quota > 0 && ` / ${formatBytes(storage.quota)}`}
           </span>

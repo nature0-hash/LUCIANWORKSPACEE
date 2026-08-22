@@ -2,24 +2,36 @@
 
 // LUCIAN Storage Manager.
 //
-// Shows browser storage usage, per-project size breakdown, the Recycle Bin,
-// and a (truthful) request-persistent-storage action. All operations work
-// against the real IndexedDB store via the Zustand store + db.ts.
+// A professional storage utility panel — NOT an AI-generated card stack.
 //
-// Architectural honesty:
-// - Storage quota is whatever navigator.storage.estimate() reports. We never
-//   invent a number. When the API is unavailable, we say so.
-// - "Protect Local Storage" calls navigator.storage.persist() — it returns
-//   `true` only when the browser actually grants persistence. We surface the
-//   real result. There is no fake "Upgrade" button: if the browser cannot
-//   grant more quota, we say so explicitly.
-// - Project deletion is a soft-delete → trash. Permanent deletion is a
-//   separate, clearly-labeled action.
+// Layout (single column, table-style):
+//   ┌──────────────────────────────────────────────┐
+//   │ Storage Manager                      [×]      │  ← header w/ ONE close
+//   ├──────────────────────────────────────────────┤
+//   │ USAGE                                        │
+//   │ Used bar ████████░░░░░░░░░░  144 KB / 10 GB  │
+//   │                                              │
+//   │ PROTECTION                                   │
+//   │ [✓] Protected   [Protect Local Storage]       │
+//   │                                              │
+//   │ PROJECTS (3)                          746 B   │
+//   │ ─────────────────────────────────────────── │
+//   │ visual-test         HTML  · 3 files  · 746 B │
+//   │ coming-soon         HTML  · 5 files  · 1.2 K │
+//   │                                              │
+//   │ RECYCLE BIN (2)              [Empty bin]     │
+//   │ ─────────────────────────────────────────── │
+//   │ old-project         trashed 8/22    [Restore]│
+//   │ test                trashed 8/20    [Restore]│
+//   └──────────────────────────────────────────────┘
+//
+// Honest throughout: shows real browser estimates, no fake upgrades,
+// truthful persistence request result.
 
 import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
-  Database,
+  ChevronRight,
   HardDrive,
   Loader2,
   RotateCcw,
@@ -34,7 +46,6 @@ import {
   DialogTitle,
 } from "@/components/ui-devspace/dialog";
 import { Button } from "@/components/ui-devspace/button";
-import { Badge } from "@/components/ui-devspace/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,7 +63,9 @@ import {
   requestPersistentStorage,
 } from "@/lib/workspace/db";
 import { formatBytes } from "@/lib/workspace/filesystem";
+import { frameworkLabel } from "@/lib/workspace/filesystem";
 import { toast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 interface StorageManagerDialogProps {
   open: boolean;
@@ -122,13 +135,13 @@ export function StorageManagerDialog({ open, onOpenChange }: StorageManagerDialo
         toast({
           title: "Local storage protected",
           description:
-            "Your browser has granted persistence. Lucian's stored data will not be evicted by the browser's automatic cleanup.",
+            "Your browser granted persistence. Stored projects will not be evicted automatically.",
         });
       } else {
         toast({
           title: "Persistence request denied",
           description:
-            "Your browser declined the persistence request. Some browsers only grant persistence for installed/PWA sites.",
+            "Your browser declined. Some browsers only grant persistence for installed/PWA sites.",
           variant: "destructive",
         });
       }
@@ -159,254 +172,264 @@ export function StorageManagerDialog({ open, onOpenChange }: StorageManagerDialo
 
   const usedPct =
     storage.quota > 0 ? Math.min(100, (storage.usage / storage.quota) * 100) : 0;
+  const liveTotal = projects.reduce((s, p) => s + p.totalSize, 0);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-hidden p-0">
-        <DialogHeader className="flex-row items-center justify-between border-b px-5 py-3">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <Database className="h-4 w-4" /> Storage Manager
-          </DialogTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
-            onClick={() => onOpenChange(false)}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          showCloseButton={false}
+          className="max-h-[88vh] max-w-2xl gap-0 overflow-hidden p-0"
+        >
+          {/* Header — single close button, no duplicate */}
+          <DialogHeader className="flex-row items-center justify-between border-b border-line-muted px-4 py-3">
+            <DialogTitle className="flex items-center gap-2 text-sm font-medium">
+              <HardDrive className="h-4 w-4 text-fg-muted" />
+              Storage Manager
+            </DialogTitle>
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              aria-label="Close Storage Manager"
+              className="focus-ring themed inline-flex h-6 w-6 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </DialogHeader>
 
-        <div className="max-h-[calc(85vh-50px)] overflow-y-auto px-5 py-4">
-          {/* Storage usage */}
-          <section className="rounded-lg border bg-card p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-sm font-medium">
-                <HardDrive className="h-4 w-4 text-muted-foreground" />
-                Browser storage
-              </h3>
-              {loading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-              ) : null}
-            </div>
-
-            {storage.quota > 0 ? (
-              <>
-                <div className="mb-1.5 flex items-baseline justify-between text-xs">
-                  <span className="font-mono text-foreground">
-                    {formatBytes(storage.usage)}
-                  </span>
-                  <span className="text-muted-foreground">
-                    of {formatBytes(storage.quota)}
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${usedPct}%` }}
-                  />
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  This is the browser&apos;s per-origin estimate — actual usage may
-                  differ slightly. Quota is set by the browser and cannot be
-                  increased by Lucian.
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                The browser does not expose storage estimates on this device.
-                Lucian cannot display usage information here.
-              </p>
-            )}
-          </section>
-
-          {/* Persistent storage */}
-          <section className="mt-3 rounded-lg border bg-card p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-sm font-medium">
-                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                Persistent storage protection
-              </h3>
-              {persistence.supported && persistence.persisted ? (
-                <Badge variant="default">Protected</Badge>
+          <div className="max-h-[calc(88vh-50px)] overflow-y-auto px-4 py-3">
+            {/* USAGE */}
+            <SectionLabel>Usage</SectionLabel>
+            <div className="mb-3 mt-1.5">
+              {storage.quota > 0 ? (
+                <>
+                  <div className="mb-1 flex items-baseline justify-between text-xs">
+                    <span className="font-mono text-fg">
+                      {formatBytes(storage.usage)}
+                    </span>
+                    <span className="text-fg-faint">of {formatBytes(storage.quota)}</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-inset">
+                    <div
+                      className="h-full rounded-full bg-accent transition-all"
+                      style={{ width: `${Math.max(usedPct, 0.5)}%` }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-fg-faint">
+                    Per-origin estimate from{" "}
+                    <code className="font-mono">navigator.storage.estimate()</code>.
+                    Quota is set by the browser and cannot be increased by Lucian.
+                  </p>
+                </>
               ) : (
-                <Badge variant="secondary">Not protected</Badge>
+                <p className="text-xs text-fg-muted">
+                  The browser does not expose storage estimates on this device.
+                </p>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Browsers can automatically evict local storage when disk space is
-              low. Requesting persistence tells the browser not to evict Lucian&apos;s
-              stored projects.{" "}
-              {persistence.supported
-                ? ""
-                : "This browser does not support the persistence API."}
-            </p>
-            {persistence.supported && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-3"
-                disabled={requesting || persistence.persisted}
-                onClick={handleRequestPersistence}
-              >
-                {requesting ? (
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ShieldCheck className="mr-2 h-3.5 w-3.5" />
-                )}
-                {persistence.persisted ? "Protected" : "Protect Local Storage"}
-              </Button>
-            )}
-          </section>
 
-          {/* Stored projects */}
-          <section className="mt-3">
-            <h3 className="mb-2 flex items-center justify-between text-sm font-medium">
-              <span>Stored projects ({projects.length})</span>
-              <span className="text-xs font-normal text-muted-foreground">
-                {formatBytes(projects.reduce((s, p) => s + p.totalSize, 0))}
-              </span>
-            </h3>
-            {projects.length === 0 ? (
-              <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-                No live projects stored.
-              </p>
-            ) : (
-              <ul className="space-y-1">
-                {projects.map((p) => (
-                  <li
-                    key={p.id}
-                    className="flex items-center justify-between rounded-md border bg-card px-3 py-2 text-sm"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {p.fileCount} files · {p.framework}
-                      </p>
-                    </div>
-                    <span className="ml-3 shrink-0 font-mono text-xs text-muted-foreground">
-                      {formatBytes(p.totalSize)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {/* Recycle Bin */}
-          <section className="mt-4">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-sm font-medium">
-                <Trash2 className="h-4 w-4 text-muted-foreground" />
-                Recycle Bin ({trashedProjects.length})
-              </h3>
-              {trashedProjects.length > 0 ? (
+            {/* PROTECTION */}
+            <SectionLabel>Protection</SectionLabel>
+            <div className="mb-3 mt-1.5 flex items-center justify-between rounded-md border border-line bg-surface px-3 py-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <ShieldCheck
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0",
+                    persistence.persisted ? "text-accent" : "text-fg-faint",
+                  )}
+                />
+                <span className="text-xs">
+                  {persistence.supported ? (
+                    persistence.persisted ? "Protected" : "Not protected"
+                  ) : (
+                    "Unsupported by this browser"
+                  )}
+                </span>
+              </div>
+              {persistence.supported && (
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   size="sm"
-                  className="h-7 text-xs text-destructive hover:text-destructive"
-                  onClick={() => setConfirmEmpty(true)}
+                  className="h-6 px-2 text-[11px]"
+                  disabled={requesting || persistence.persisted}
+                  onClick={handleRequestPersistence}
                 >
-                  Empty Recycle Bin
+                  {requesting ? (
+                    <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                  ) : (
+                    <ShieldCheck className="mr-1.5 h-3 w-3" />
+                  )}
+                  {persistence.persisted ? "Protected" : "Protect Local Storage"}
                 </Button>
-              ) : null}
+              )}
             </div>
 
-            {trashedProjects.length === 0 ? (
-              <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-                Recycle Bin is empty. Deleted projects will appear here first.
-              </p>
-            ) : (
-              <ul className="space-y-1">
-                {trashedProjects.map((p) => (
-                  <li
-                    key={p.id}
-                    className="flex items-center justify-between rounded-md border bg-card px-3 py-2 text-sm"
+            {/* PROJECTS */}
+            <SectionLabel
+              right={
+                <span className="font-mono text-[11px] text-fg-faint">
+                  {formatBytes(liveTotal)}
+                </span>
+              }
+            >
+              Projects ({projects.length})
+            </SectionLabel>
+            <div className="mb-3 mt-1.5">
+              {projects.length === 0 ? (
+                <p className="px-3 py-3 text-xs text-fg-faint">No live projects.</p>
+              ) : (
+                <ul className="divide-y divide-line-muted border border-line">
+                  {projects.map((p) => (
+                    <li
+                      key={p.id}
+                      className="flex items-center justify-between gap-3 bg-surface px-3 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium text-fg">{p.name}</p>
+                        <p className="mt-0.5 truncate font-mono text-[10px] text-fg-faint">
+                          {frameworkLabel(p.framework)} · {p.fileCount} files
+                        </p>
+                      </div>
+                      <span className="shrink-0 font-mono text-[11px] text-fg-muted">
+                        {formatBytes(p.totalSize)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {/* RECYCLE BIN */}
+            <SectionLabel
+              right={
+                trashedProjects.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmEmpty(true)}
+                    className="text-[11px] text-[color-mix(in_srgb,var(--accent)_85%,var(--fg))] hover:underline"
                   >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {p.fileCount} files · {formatBytes(p.totalSize)}
-                        {p.trashedAt
-                          ? ` · trashed ${new Date(p.trashedAt).toLocaleDateString()}`
-                          : ""}
-                      </p>
-                    </div>
-                    <div className="ml-3 flex shrink-0 items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7"
-                        onClick={() => handleRestore(p.id)}
-                      >
-                        <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Restore
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-destructive hover:text-destructive"
-                        onClick={() => setConfirmDelete(p.id)}
-                      >
-                        <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete forever
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
+                    Empty bin
+                  </button>
+                ) : null
+              }
+            >
+              Recycle Bin ({trashedProjects.length})
+            </SectionLabel>
+            <div className="mt-1.5">
+              {trashedProjects.length === 0 ? (
+                <p className="px-3 py-3 text-xs text-fg-faint">Empty.</p>
+              ) : (
+                <ul className="divide-y divide-line-muted border border-line">
+                  {trashedProjects.map((p) => (
+                    <li
+                      key={p.id}
+                      className="flex items-center justify-between gap-3 bg-surface px-3 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium text-fg">{p.name}</p>
+                        <p className="mt-0.5 truncate font-mono text-[10px] text-fg-faint">
+                          {p.fileCount} files · {formatBytes(p.totalSize)}
+                          {p.trashedAt
+                            ? ` · ${new Date(p.trashedAt).toLocaleDateString()}`
+                            : ""}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[11px]"
+                          onClick={() => handleRestore(p.id)}
+                        >
+                          <RotateCcw className="mr-1 h-3 w-3" />
+                          Restore
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-[color-mix(in_srgb,var(--accent)_85%,var(--fg))]"
+                          title="Delete forever"
+                          onClick={() => setConfirmDelete(p.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-        {/* Confirm: empty recycle bin */}
-        <AlertDialog open={confirmEmpty} onOpenChange={setConfirmEmpty}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Empty Recycle Bin?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will permanently delete {trashedProjects.length}{" "}
-                {trashedProjects.length === 1 ? "project" : "projects"} and all
-                of their files. This cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={handleEmptyBin}
-              >
-                <AlertTriangle className="mr-2 h-4 w-4" />
-                Empty Recycle Bin
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+      {/* Confirm: empty recycle bin */}
+      <AlertDialog open={confirmEmpty} onOpenChange={setConfirmEmpty}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Empty Recycle Bin?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {trashedProjects.length}{" "}
+              {trashedProjects.length === 1 ? "project" : "projects"} and all
+              of their files. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-[color-mix(in_srgb,var(--accent)_70%,#000_25%)] text-accent-fg hover:bg-[color-mix(in_srgb,var(--accent)_55%,#000_35%)]"
+              onClick={handleEmptyBin}
+            >
+              <AlertTriangle className="mr-2 h-4 w-4" />
+              Empty Recycle Bin
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-        {/* Confirm: permanently delete one */}
-        <AlertDialog
-          open={!!confirmDelete}
-          onOpenChange={(o) => !o && setConfirmDelete(null)}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete project forever?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will permanently delete the project record and all of its
-                files. This cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={() => confirmDelete && handlePermanentDelete(confirmDelete)}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete forever
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </DialogContent>
-    </Dialog>
+      {/* Confirm: permanently delete one */}
+      <AlertDialog
+        open={!!confirmDelete}
+        onOpenChange={(o) => !o && setConfirmDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete project forever?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the project record and all of its files.
+              This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-[color-mix(in_srgb,var(--accent)_70%,#000_25%)] text-accent-fg hover:bg-[color-mix(in_srgb,var(--accent)_55%,#000_35%)]"
+              onClick={() => confirmDelete && handlePermanentDelete(confirmDelete)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete forever
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+function SectionLabel({
+  children,
+  right,
+}: {
+  children: React.ReactNode;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between border-t border-line-muted pt-3 first:border-t-0 first:pt-0">
+      <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-fg-faint">
+        <ChevronRight className="h-2.5 w-2.5" />
+        {children}
+      </span>
+      {right}
+    </div>
   );
 }

@@ -13,6 +13,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { ProjectLibraryView } from "@/components/devspace/library/project-library-view";
 import { WorkspaceView } from "@/components/devspace/workspace/workspace-view";
 import { VisualEditorView } from "@/components/devspace/visual-editor/visual-editor-view";
+import { VectorStudioView } from "@/components/devspace/vector-studio/vector-studio-view";
 import { CodeConverterView } from "@/components/devspace/converter/code-converter-view";
 import { TopNavigation } from "@/components/devspace/workspace/top-navigation";
 
@@ -31,6 +32,7 @@ export function DevWorkspaceModule() {
         {view === "library" && <ProjectLibraryView />}
         {view === "workspace" && <WorkspaceView />}
         {view === "visual-editor" && <VisualEditorView />}
+        {view === "vector-studio" && <VectorStudioView />}
         {view === "converter" && <CodeConverterView />}
       </main>
     </div>

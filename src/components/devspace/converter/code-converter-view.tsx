@@ -407,18 +407,18 @@ function ProjectToCodePanel(props: ProjectToCodeProps) {
     <div className="grid gap-6 lg:grid-cols-2">
       {/* Input side */}
       <Card className="p-5">
-        <h3 className="mb-3 flex items-center gap-2 font-semibold">
-          <FolderArchive className="h-4 w-4" /> Source Project
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+          <FolderArchive className="h-4 w-4" /> Source project
         </h3>
         <div className="space-y-3">
-          <div className="space-y-2">
-            <Label>Select from library</Label>
+          <div className="space-y-1.5">
+            <Label className="text-[11px] text-muted-foreground">Select project</Label>
             <select
               value={props.selectedProjectId}
               onChange={(e) => props.setSelectedProjectId(e.target.value)}
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              className="focus-ring themed w-full rounded-md border border-line bg-inset px-3 py-1.5 text-sm text-fg"
             >
-              <option value="">— Select a project —</option>
+              <option value="">Choose a project…</option>
               {props.projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} ({p.files.length} files)
@@ -427,10 +427,9 @@ function ProjectToCodePanel(props: ProjectToCodeProps) {
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="h-px flex-1 bg-border" />
-            <span className="text-xs text-muted-foreground">OR</span>
-            <div className="h-px flex-1 bg-border" />
+          <div className="flex items-center gap-2 text-[11px] text-fg-faint">
+            <span className="text-fg-faint">·</span>
+            <span>or import a project</span>
           </div>
 
           <div className="flex gap-2">
@@ -443,9 +442,9 @@ function ProjectToCodePanel(props: ProjectToCodeProps) {
           </div>
 
           {props.importedFiles && (
-            <div className="rounded-md bg-muted/50 p-3 text-sm">
-              <p className="font-medium">{props.importedFiles.name}</p>
-              <p className="text-xs text-muted-foreground">
+            <div className="themed rounded-md border border-line bg-surface px-3 py-2 text-sm">
+              <p className="font-medium text-fg">{props.importedFiles.name}</p>
+              <p className="text-xs text-fg-muted">
                 {props.importedFiles.files.length} files imported — ready to convert
               </p>
             </div>
@@ -563,8 +562,8 @@ function ProjectToCodePanel(props: ProjectToCodeProps) {
         />
         {!props.bundle && (
           <p className="mt-2 text-xs text-muted-foreground">
-            Pick a project above and click <strong>Generate Code Bundle</strong>. The output will
-            preserve every file and its path, ready to be pasted into a chat with your AI tool.
+            Generate a portable code bundle while preserving the project&apos;s
+            complete file structure and paths.
           </p>
         )}
       </Card>

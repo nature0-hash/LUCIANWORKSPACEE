@@ -408,14 +408,14 @@ export function ProjectLibraryView() {
 
         {/* Import progress banner */}
         {importProgress && (
-          <Card className="mb-4 flex items-center gap-3 p-3 text-sm">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          <div className="themed mb-3 flex items-center gap-2.5 rounded-md border border-line-muted bg-surface px-3 py-2 text-xs text-fg-muted">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
             <span>
-              Importing <strong>{importProgress.name}</strong>
+              Importing <strong className="font-medium text-fg">{importProgress.name}</strong>
               {importProgress.count > 0 && ` — ${importProgress.count} files processed`}
-              ...
+              …
             </span>
-          </Card>
+          </div>
         )}
 
         {/* Search */}
