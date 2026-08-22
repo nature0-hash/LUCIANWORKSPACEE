@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Star, StarOff } from "lucide-react";
 import { useMarketsStore } from "@/store/markets";
 import { getProvider, UNCONFIGURED_PROVIDERS } from "@/lib/markets/provider";
@@ -69,7 +69,7 @@ export function InstrumentList() {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search…"
+            placeholder="Search instruments…"
             className="focus-ring themed h-7 w-full rounded-md border border-line bg-inset pl-7 pr-2 text-xs text-fg placeholder:text-fg-faint"
           />
         </div>
@@ -108,10 +108,11 @@ export function InstrumentList() {
           </div>
         ) : (
           <table className="w-full text-[11px]">
-            <thead className="sticky top-0 bg-surface">
+            <thead className="sticky top-0 z-10 bg-surface">
               <tr className="border-b border-line-muted text-fg-faint">
                 <th className="px-2 py-1 text-left font-medium">Symbol</th>
-                <th className="px-2 py-1 text-right font-medium">Last</th>
+                <th className="px-2 py-1 text-right font-medium">Bid</th>
+                <th className="px-2 py-1 text-right font-medium">Ask</th>
                 <th className="px-2 py-1 text-right font-medium">Chg%</th>
                 <th className="w-4" />
               </tr>
@@ -122,6 +123,8 @@ export function InstrumentList() {
                 const ticker = tickers.get(inst.symbol);
                 const isFav = watchlist.some((w) => w.symbol === inst.symbol);
                 const chg = ticker?.priceChangePercent ?? 0;
+                const bid = ticker?.bidPrice ?? price;
+                const ask = ticker?.askPrice ?? price;
                 return (
                   <tr
                     key={inst.symbol}
@@ -137,8 +140,11 @@ export function InstrumentList() {
                         <span className="text-[9px] text-fg-faint">/{inst.quote}</span>
                       </div>
                     </td>
-                    <td className="px-2 py-1 text-right font-mono tabular-nums text-fg">
-                      {price !== undefined ? price.toFixed(inst.pricePrecision) : "—"}
+                    <td className="px-2 py-1 text-right font-mono tabular-nums text-red-400">
+                      {bid !== undefined ? bid.toFixed(inst.pricePrecision) : "—"}
+                    </td>
+                    <td className="px-2 py-1 text-right font-mono tabular-nums text-green-400">
+                      {ask !== undefined ? ask.toFixed(inst.pricePrecision) : "—"}
                     </td>
                     <td
                       className={cn(

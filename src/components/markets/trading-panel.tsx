@@ -2,11 +2,12 @@
 
 import { useState, useCallback } from "react";
 import { useMarketsStore } from "@/store/markets";
-import { getProvider } from "@/lib/markets/provider";
 import { openPosition, closePosition, getOpenPositions, getClosedPositions } from "@/lib/markets/paper-trading";
 import type { OrderSide, OrderType } from "@/lib/markets/types";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+
+type BottomTab = "positions" | "pending" | "history";
 
 export function TradingPanel() {
   const mode = useMarketsStore((s) => s.mode);
@@ -23,7 +24,7 @@ export function TradingPanel() {
   const [limitPrice, setLimitPrice] = useState("");
   const [stopLoss, setStopLoss] = useState("");
   const [takeProfit, setTakeProfit] = useState("");
-  const [activeTab, setActiveTab] = useState<"positions" | "history">("positions");
+  const [bottomTab, setBottomTab] = useState<BottomTab>("positions");
   const [positions, setPositions] = useState(getOpenPositions());
   const [closed, setClosed] = useState(getClosedPositions());
 
@@ -32,6 +33,13 @@ export function TradingPanel() {
   const entryPrice = orderType === "limit" && limitPrice ? parseFloat(limitPrice) : price ?? 0;
   const qty = parseFloat(quantity) || 0;
   const value = entryPrice * qty;
+
+  // Spread display
+  const ticker = useMarketsStore((s) => s.tickers.get(selectedSymbol ?? ""));
+  const bid = ticker?.bidPrice ?? price;
+  const ask = ticker?.askPrice ?? price;
+  const spread = bid !== undefined && ask !== undefined ? ask - bid : 0;
+  const spreadPct = price ? (spread / price) * 100 : 0;
 
   const handleTrade = useCallback(() => {
     if (!selectedSymbol || !price || qty <= 0) return;
@@ -69,7 +77,6 @@ export function TradingPanel() {
 
   return (
     <div className="themed border-t border-line-muted bg-surface">
-      {/* Order entry + positions side by side */}
       <div className="flex">
         {/* Order entry */}
         <div className="w-56 shrink-0 border-r border-line-muted p-2">
@@ -77,14 +84,39 @@ export function TradingPanel() {
           <div className="mb-2 flex items-center justify-between">
             <span className={cn(
               "rounded px-1.5 py-0.5 text-[9px] font-bold",
-              mode === "paper" ? "bg-amber-500/20 text-amber-600 dark:text-amber-400" : "bg-red-500/20 text-red-500",
+              mode === "paper" ? "bg-accent/15 text-accent" : "bg-red-500/20 text-red-500",
             )}>
-              {mode.toUpperCase()}
+              {mode === "paper" ? "VIRTUAL" : "REAL"}
             </span>
             {mode === "real" && (
               <span className="text-[9px] text-red-500">No broker</span>
             )}
           </div>
+
+          {/* Instrument info */}
+          {instrument && (
+            <div className="mb-2 rounded-md border border-line-muted bg-surface-2/40 p-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] font-medium text-fg">{instrument.symbol}</span>
+              </div>
+              <div className="mt-1 grid grid-cols-2 gap-x-2 text-[9px]">
+                <div className="flex justify-between">
+                  <span className="text-fg-faint">Bid</span>
+                  <span className="font-mono text-red-400">{bid !== undefined ? bid.toFixed(instrument.pricePrecision) : "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-fg-faint">Ask</span>
+                  <span className="font-mono text-green-400">{ask !== undefined ? ask.toFixed(instrument.pricePrecision) : "—"}</span>
+                </div>
+              </div>
+              {spread > 0 && (
+                <div className="mt-0.5 flex justify-between text-[9px]">
+                  <span className="text-fg-faint">Spread</span>
+                  <span className="font-mono text-fg-muted">{spread.toFixed(2)} ({spreadPct.toFixed(3)}%)</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Side toggle */}
           <div className="mb-2 flex gap-1">
@@ -125,11 +157,12 @@ export function TradingPanel() {
           </div>
 
           {/* Quantity */}
-          <Field label="Quantity" >
+          <Field label="Volume (lots)">
             <input
               type="number"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
+              step="0.01"
               className="focus-ring themed h-6 w-full rounded border border-line bg-inset px-1.5 text-[11px] text-fg"
             />
           </Field>
@@ -149,7 +182,7 @@ export function TradingPanel() {
 
           {/* SL / TP */}
           <div className="flex gap-1">
-            <Field label="SL">
+            <Field label="Stop Loss">
               <input
                 type="number"
                 value={stopLoss}
@@ -158,7 +191,7 @@ export function TradingPanel() {
                 className="focus-ring themed h-6 w-full rounded border border-line bg-inset px-1.5 text-[11px] text-fg"
               />
             </Field>
-            <Field label="TP">
+            <Field label="Take Profit">
               <input
                 type="number"
                 value={takeProfit}
@@ -169,17 +202,31 @@ export function TradingPanel() {
             </Field>
           </div>
 
-          {/* Estimated value */}
-          <div className="mt-2 flex justify-between text-[10px] text-fg-faint">
-            <span>Value</span>
-            <span className="font-mono tabular-nums">${value.toFixed(2)}</span>
-          </div>
-          {stopLoss && price && (
-            <div className="flex justify-between text-[10px] text-fg-faint">
-              <span>Risk</span>
-              <span className="font-mono tabular-nums">${Math.abs(entryPrice - parseFloat(stopLoss)) * qty}</span>
+          {/* Estimated value + risk */}
+          <div className="mt-2 space-y-0.5 border-t border-line-muted pt-1.5">
+            <div className="flex justify-between text-[10px]">
+              <span className="text-fg-faint">Contract value</span>
+              <span className="font-mono tabular-nums text-fg-muted">${value.toFixed(2)}</span>
             </div>
-          )}
+            {stopLoss && price && (
+              <div className="flex justify-between text-[10px]">
+                <span className="text-fg-faint">Risk amount</span>
+                <span className="font-mono tabular-nums text-red-400">${Math.abs(entryPrice - parseFloat(stopLoss)) * qty}</span>
+              </div>
+            )}
+            {takeProfit && price && (
+              <div className="flex justify-between text-[10px]">
+                <span className="text-fg-faint">Reward potential</span>
+                <span className="font-mono tabular-nums text-green-400">${Math.abs(parseFloat(takeProfit) - entryPrice) * qty}</span>
+              </div>
+            )}
+            {account && (
+              <div className="flex justify-between text-[10px]">
+                <span className="text-fg-faint">Required margin</span>
+                <span className="font-mono tabular-nums text-fg-muted">${(value * 0.1).toFixed(2)}</span>
+              </div>
+            )}
+          </div>
 
           {/* Execute */}
           <button
@@ -192,29 +239,22 @@ export function TradingPanel() {
                 : "bg-red-600 text-white hover:bg-red-700",
             )}
           >
-            {mode === "real" ? "BROKER REQUIRED" : `${side.toUpperCase()} ${instrument?.base ?? ""}`}
+            {mode === "real" ? "BROKER REQUIRED" : `${side.toUpperCase()} ${instrument?.base ?? ""} @ ${orderType === "market" ? "Market" : entryPrice.toFixed(2)}`}
           </button>
         </div>
 
-        {/* Positions / History */}
+        {/* Positions / Pending / History */}
         <div className="min-w-0 flex-1">
-          <div className="flex h-6 shrink-0 items-center gap-1 border-b border-line-muted px-2">
-            <button
-              onClick={() => { setActiveTab("positions"); setPositions(getOpenPositions()); }}
-              className={cn("text-[10px] font-medium", activeTab === "positions" ? "text-fg" : "text-fg-muted hover:text-fg")}
-            >
-              Open ({positions.length})
-            </button>
-            <button
-              onClick={() => { setActiveTab("history"); setClosed(getClosedPositions()); }}
-              className={cn("text-[10px] font-medium", activeTab === "history" ? "text-fg" : "text-fg-muted hover:text-fg")}
-            >
-              History ({closed.length})
-            </button>
+          <div className="flex h-6 shrink-0 items-center gap-2 border-b border-line-muted px-2">
+            <TabBtn active={bottomTab === "positions"} onClick={() => { setBottomTab("positions"); setPositions(getOpenPositions()); }} label="Open Positions" count={positions.length} />
+            <TabBtn active={bottomTab === "pending"} onClick={() => setBottomTab("pending")} label="Pending Orders" count={0} />
+            <TabBtn active={bottomTab === "history"} onClick={() => { setBottomTab("history"); setClosed(getClosedPositions()); }} label="History" count={closed.length} />
           </div>
-          <div className="max-h-32 overflow-y-auto">
-            {activeTab === "positions" ? (
+          <div className="max-h-36 overflow-y-auto">
+            {bottomTab === "positions" ? (
               <PositionsTable positions={positions} prices={prices} onClose={handleClose} />
+            ) : bottomTab === "pending" ? (
+              <PendingOrdersTable />
             ) : (
               <HistoryTable positions={closed} />
             )}
@@ -222,6 +262,18 @@ export function TradingPanel() {
         </div>
       </div>
     </div>
+  );
+}
+
+function TabBtn({ active, onClick, label, count }: { active: boolean; onClick: () => void; label: string; count: number }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn("flex items-center gap-1 text-[10px] font-medium transition-colors", active ? "text-fg" : "text-fg-muted hover:text-fg")}
+    >
+      {label}
+      {count > 0 && <span className="rounded bg-surface-2 px-1 text-[9px] tabular-nums">{count}</span>}
+    </button>
   );
 }
 
@@ -244,16 +296,19 @@ function PositionsTable({
   onClose: (id: string) => void;
 }) {
   if (positions.length === 0) {
-    return <div className="p-3 text-center text-[10px] text-fg-faint">No open positions.</div>;
+    return <div className="p-4 text-center text-[10px] text-fg-faint">No open positions.</div>;
   }
   return (
     <table className="w-full text-[10px]">
       <thead className="text-fg-faint">
         <tr className="border-b border-line-muted">
           <th className="px-2 py-0.5 text-left font-medium">Symbol</th>
-          <th className="px-2 py-0.5 text-left font-medium">Side</th>
+          <th className="px-2 py-0.5 text-left font-medium">Type</th>
+          <th className="px-2 py-0.5 text-right font-medium">Volume</th>
           <th className="px-2 py-0.5 text-right font-medium">Entry</th>
-          <th className="px-2 py-0.5 text-right font-medium">Qty</th>
+          <th className="px-2 py-0.5 text-right font-medium">Current</th>
+          <th className="px-2 py-0.5 text-right font-medium">S/L</th>
+          <th className="px-2 py-0.5 text-right font-medium">T/P</th>
           <th className="px-2 py-0.5 text-right font-medium">P/L</th>
           <th className="w-8" />
         </tr>
@@ -270,20 +325,18 @@ function PositionsTable({
             <tr key={p.id} className="border-b border-line-muted/50 hover:bg-hover">
               <td className="px-2 py-0.5 font-mono text-fg">{p.symbol}</td>
               <td className={cn("px-2 py-0.5 font-medium", p.side === "buy" ? "text-green-500" : "text-red-500")}>
-                {p.side.toUpperCase()}
+                {p.side === "buy" ? "Buy" : "Sell"}
               </td>
-              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-muted">{p.entryPrice.toFixed(2)}</td>
               <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-muted">{p.quantity}</td>
+              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-muted">{p.entryPrice.toFixed(2)}</td>
+              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-muted">{price?.toFixed(2) ?? "—"}</td>
+              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-faint">{p.stopLoss > 0 ? p.stopLoss.toFixed(2) : "—"}</td>
+              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-faint">{p.takeProfit > 0 ? p.takeProfit.toFixed(2) : "—"}</td>
               <td className={cn("px-2 py-0.5 text-right font-mono tabular-nums", pnl >= 0 ? "text-green-500" : "text-red-500")}>
                 {pnl >= 0 ? "+" : ""}{pnl.toFixed(2)}
               </td>
               <td className="px-1 py-0.5">
-                <button
-                  onClick={() => onClose(p.id)}
-                  className="text-[9px] text-fg-faint hover:text-fg"
-                >
-                  ✕
-                </button>
+                <button onClick={() => onClose(p.id)} className="text-[9px] text-fg-faint hover:text-fg">✕</button>
               </td>
             </tr>
           );
@@ -293,19 +346,29 @@ function PositionsTable({
   );
 }
 
+function PendingOrdersTable() {
+  return (
+    <div className="p-4 text-center text-[10px] text-fg-faint">
+      No pending orders. Pending orders (limit/stop) will appear here when placed.
+    </div>
+  );
+}
+
 function HistoryTable({ positions }: { positions: ReturnType<typeof getClosedPositions> }) {
   if (positions.length === 0) {
-    return <div className="p-3 text-center text-[10px] text-fg-faint">No closed positions.</div>;
+    return <div className="p-4 text-center text-[10px] text-fg-faint">No closed positions.</div>;
   }
   return (
     <table className="w-full text-[10px]">
       <thead className="text-fg-faint">
         <tr className="border-b border-line-muted">
           <th className="px-2 py-0.5 text-left font-medium">Symbol</th>
-          <th className="px-2 py-0.5 text-left font-medium">Side</th>
+          <th className="px-2 py-0.5 text-left font-medium">Type</th>
+          <th className="px-2 py-0.5 text-right font-medium">Volume</th>
           <th className="px-2 py-0.5 text-right font-medium">Entry</th>
           <th className="px-2 py-0.5 text-right font-medium">Exit</th>
           <th className="px-2 py-0.5 text-right font-medium">P/L</th>
+          <th className="px-2 py-0.5 text-right font-medium">Time</th>
         </tr>
       </thead>
       <tbody>
@@ -313,13 +376,15 @@ function HistoryTable({ positions }: { positions: ReturnType<typeof getClosedPos
           <tr key={p.id} className="border-b border-line-muted/50 hover:bg-hover">
             <td className="px-2 py-0.5 font-mono text-fg">{p.symbol}</td>
             <td className={cn("px-2 py-0.5 font-medium", p.side === "buy" ? "text-green-500" : "text-red-500")}>
-              {p.side.toUpperCase()}
+              {p.side === "buy" ? "Buy" : "Sell"}
             </td>
+            <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-muted">{p.quantity}</td>
             <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-muted">{p.entryPrice.toFixed(2)}</td>
             <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-muted">{p.exitPrice.toFixed(2)}</td>
             <td className={cn("px-2 py-0.5 text-right font-mono tabular-nums", p.realizedPnl >= 0 ? "text-green-500" : "text-red-500")}>
               {p.realizedPnl >= 0 ? "+" : ""}{p.realizedPnl.toFixed(2)}
             </td>
+            <td className="px-2 py-0.5 text-right text-[9px] text-fg-faint">{new Date(p.closedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
           </tr>
         ))}
       </tbody>

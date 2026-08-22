@@ -3,8 +3,6 @@
 // Uses REAL market data (from the provider) but VIRTUAL money. No real
 // financial consequences. Positions, orders, and P/L are persisted to
 // localStorage so they survive page refreshes.
-//
-// The account is clearly labeled "PAPER" in the UI.
 
 import type {
   AccountState,
@@ -18,7 +16,7 @@ import type { RiskCheckResult } from "./types";
 import { checkRisk } from "./risk-engine";
 
 const STORAGE_KEY = "lucian-markets-paper-account";
-const DEFAULT_STARTING_BALANCE = 100000; // $100,000 virtual USD
+const DEFAULT_STARTING_BALANCE = 1000; // $1,000 virtual USD
 
 interface PaperAccountData {
   startingBalance: number;
@@ -50,18 +48,27 @@ function defaultData(): PaperAccountData {
   };
 }
 
-function load(): PaperAccountData {
+export function loadData(): PaperAccountData {
   if (typeof window === "undefined") return defaultData();
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return { ...defaultData(), ...JSON.parse(stored) };
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Migration: if the stored balance is the old $100,000 default, reset to $1,000.
+      if (parsed.startingBalance === 100000) {
+        const fresh = defaultData();
+        saveData(fresh);
+        return fresh;
+      }
+      return { ...defaultData(), ...parsed };
+    }
   } catch {
     // storage unavailable
   }
   return defaultData();
 }
 
-function save(data: PaperAccountData): void {
+export function saveData(data: PaperAccountData): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -70,12 +77,41 @@ function save(data: PaperAccountData): void {
   }
 }
 
-/** Generate a position ID. */
+// ---------------------------------------------------------------------------
+// Clean exported API for balance adjustments
+// ---------------------------------------------------------------------------
+
+/** Add funds to the virtual account balance. */
+export function depositVirtual(amount: number): void {
+  if (amount <= 0) return;
+  const data = loadData();
+  data.balance += amount;
+  saveData(data);
+}
+
+/** Remove funds from the virtual account balance (if sufficient). */
+export function withdrawVirtual(amount: number): boolean {
+  if (amount <= 0) return false;
+  const data = loadData();
+  if (data.balance < amount) return false;
+  data.balance -= amount;
+  saveData(data);
+  return true;
+}
+
+/** Get the current virtual balance. */
+export function getVirtualBalance(): number {
+  return loadData().balance;
+}
+
+// ---------------------------------------------------------------------------
+// Position management
+// ---------------------------------------------------------------------------
+
 function genId(): string {
   return `pos_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-/** Open a paper position (market order). */
 export function openPosition(
   symbol: string,
   side: OrderSide,
@@ -85,10 +121,9 @@ export function openPosition(
   takeProfit: number = 0,
   riskRules: RiskRules,
 ): { success: boolean; position?: Position; error?: string } {
-  const data = load();
+  const data = loadData();
   const entryValue = entryPrice * quantity;
 
-  // Risk check
   const equity = data.balance + data.positions.reduce((s, p) => s + p.unrealizedPnl, 0);
   const riskCheck = checkRisk({
     side,
@@ -121,19 +156,17 @@ export function openPosition(
     entryValue,
   };
   data.positions.push(position);
-  // Deduct the position value from the balance (margin).
   data.balance -= entryValue;
-  save(data);
+  saveData(data);
   return { success: true, position };
 }
 
-/** Close a paper position at the given exit price. */
 export function closePosition(positionId: string, exitPrice: number): {
   success: boolean;
   closed?: ClosedPosition;
   error?: string;
 } {
-  const data = load();
+  const data = loadData();
   const idx = data.positions.findIndex((p) => p.id === positionId);
   if (idx < 0) return { success: false, error: "Position not found" };
   const pos = data.positions[idx];
@@ -155,10 +188,8 @@ export function closePosition(positionId: string, exitPrice: number): {
     closedAt: Date.now(),
   };
   data.closedPositions.unshift(closed);
-  // Add the position value back + realized P/L.
   data.balance += pos.entryValue + realizedPnl;
 
-  // Track losses for risk rules.
   if (realizedPnl < 0) {
     data.dailyLossAmount += Math.abs(realizedPnl);
     data.weeklyLossAmount += Math.abs(realizedPnl);
@@ -169,13 +200,12 @@ export function closePosition(positionId: string, exitPrice: number): {
   }
 
   data.positions.splice(idx, 1);
-  save(data);
+  saveData(data);
   return { success: true, closed };
 }
 
-/** Update unrealized P/L for all open positions based on current market prices. */
 export function updateUnrealizedPnl(prices: Map<string, number>): void {
-  const data = load();
+  const data = loadData();
   let changed = false;
   for (const pos of data.positions) {
     const price = prices.get(pos.symbol);
@@ -186,7 +216,6 @@ export function updateUnrealizedPnl(prices: Map<string, number>): void {
           : (pos.entryPrice - price) * pos.quantity;
       changed = true;
 
-      // Auto-close on SL/TP hit.
       if (pos.stopLoss > 0) {
         if (pos.side === "buy" && price <= pos.stopLoss) {
           closePosition(pos.id, pos.stopLoss);
@@ -209,14 +238,12 @@ export function updateUnrealizedPnl(prices: Map<string, number>): void {
       }
     }
   }
-  if (changed) save(data);
+  if (changed) saveData(data);
 }
 
-/** Get the current account state (computed from stored data + live prices). */
 export function getAccountState(prices?: Map<string, number>): AccountState {
-  const data = load();
+  const data = loadData();
 
-  // Reset daily/weekly loss counters if needed.
   const now = Date.now();
   if (now > data.dailyLossResetAt) {
     data.dailyLossAmount = 0;
@@ -257,17 +284,14 @@ export function getAccountState(prices?: Map<string, number>): AccountState {
   };
 }
 
-/** Get all open positions. */
 export function getOpenPositions(): Position[] {
-  return load().positions;
+  return loadData().positions;
 }
 
-/** Get all closed positions (most recent first). */
 export function getClosedPositions(): ClosedPosition[] {
-  return load().closedPositions;
+  return loadData().closedPositions;
 }
 
-/** Reset the paper account to its starting balance. */
 export function resetPaperAccount(): void {
-  save(defaultData());
+  saveData(defaultData());
 }
