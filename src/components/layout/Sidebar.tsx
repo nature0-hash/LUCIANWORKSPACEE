@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Code2, Home, X } from "lucide-react";
+import { Code2, Home, LineChart, Vault as VaultIcon, X } from "lucide-react";
 import { BrandMark } from "@/components/branding/BrandMark";
 import { IconButton } from "@/components/ui/IconButton";
 import {
@@ -13,13 +13,14 @@ import { useSidebar } from "@/components/layout/SidebarContext";
 /**
  * Sidebar navigation items.
  *
- * Phase 4 introduces DevWorkspace — the in-browser IDE with Project
- * Library, Workspace (file explorer + Monaco editor + live preview), and
- * Code Converter.
+ * Navigation order: Home, DevWorkspace, Markets, Vault.
+ * Each is an independent major LUCIAN area.
  */
 const NAV_ITEMS: NavItem[] = [
   { id: "home", href: "/", label: "Home", icon: Home },
   { id: "dev-workspace", href: "/dev-workspace", label: "DevWorkspace", icon: Code2 },
+  { id: "markets", href: "/markets", label: "Markets", icon: LineChart },
+  { id: "vault", href: "/vault", label: "Vault", icon: VaultIcon },
 ];
 
 /**
