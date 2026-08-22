@@ -43,11 +43,9 @@ export function AccountBar() {
     : "Connecting…";
   const dotColor = mounted
     ? cryptoProvider?.status === "live"
-      ? "bg-green-500"
+      ? "bg-[#00c087]"
       : cryptoProvider?.status === "delayed"
       ? "bg-amber-500"
-      : cryptoProvider?.status === "setup-required"
-      ? "bg-zinc-500"
       : "bg-red-500"
     : "bg-amber-500";
 
@@ -70,8 +68,7 @@ export function AccountBar() {
     if (!tradingPool || tradingPool.allocated <= 0) {
       toast({
         title: "No trading capital",
-        description:
-          "Allocate capital in Vault → Trading Capital pool first.",
+        description: "Allocate capital in Vault → Trading Capital pool first.",
         variant: "destructive",
       });
       return;
@@ -82,7 +79,7 @@ export function AccountBar() {
     refreshAccount();
     toast({
       title: "Deposit complete",
-      description: `$${amount.toFixed(2)} deposited from Vault → Trading Capital.`,
+      description: `$${amount.toFixed(2)} deposited from Vault.`,
     });
   };
 
@@ -111,7 +108,7 @@ export function AccountBar() {
       refreshAccount();
       toast({
         title: "Withdrawal complete",
-        description: `$${amount.toFixed(2)} withdrawn to Vault → Trading Capital.`,
+        description: `$${amount.toFixed(2)} withdrawn to Vault.`,
       });
     }
   };
@@ -126,7 +123,7 @@ export function AccountBar() {
     });
   };
 
-  // Build metrics array — order matches the screenshot:
+  // Metrics matching screenshot order:
   // Margin, Free margin, Margin level, Equity, Floating profit
   const metrics = account
     ? [
@@ -134,8 +131,7 @@ export function AccountBar() {
         { label: "Free margin", value: `$${fmt(account.freeMargin)}` },
         {
           label: "Margin level",
-          value:
-            account.marginLevel > 0 ? `${fmt(account.marginLevel)}%` : "0.00%",
+          value: account.marginLevel > 0 ? `${fmt(account.marginLevel)}%` : "0.00%",
         },
         { label: "Equity", value: `$${fmt(account.equity)}` },
         {
@@ -143,25 +139,25 @@ export function AccountBar() {
           value: `${account.floatingPnl >= 0 ? "+" : ""}$${fmt(account.floatingPnl)}`,
           color:
             account.floatingPnl > 0
-              ? "text-green-500"
+              ? "text-[#00c087]"
               : account.floatingPnl < 0
-              ? "text-red-500"
+              ? "text-[#ff4757]"
               : undefined,
         },
       ]
     : [];
 
   return (
-    <div className="themed flex h-9 shrink-0 items-center gap-3 border-b border-line-muted bg-surface px-3 text-[11px]">
-      {/* Left: Mode toggle */}
-      <div className="flex items-center gap-0.5 rounded-md border border-line bg-inset p-0.5">
+    <div className="flex h-10 shrink-0 items-center gap-3 border-b border-[#2d333b] bg-[#16181d] px-3 text-[11px]">
+      {/* Left: Virtual / Real toggle */}
+      <div className="flex items-center gap-0.5 rounded border border-[#2d333b] bg-[#13161c] p-0.5">
         <button
           onClick={() => setMode("paper")}
           className={cn(
             "rounded px-2.5 py-0.5 text-[10px] font-bold transition-colors",
             mode === "paper"
-              ? "bg-accent text-accent-fg"
-              : "text-fg-faint hover:text-fg",
+              ? "bg-[#3b82f6] text-white"
+              : "text-[#8b949e] hover:text-white",
           )}
         >
           Virtual
@@ -171,29 +167,28 @@ export function AccountBar() {
           className={cn(
             "rounded px-2.5 py-0.5 text-[10px] font-bold transition-colors",
             mode === "real"
-              ? "bg-red-600 text-white"
-              : "text-fg-faint hover:text-fg",
+              ? "bg-[#ff4757] text-white"
+              : "text-[#8b949e] hover:text-white",
           )}
         >
           Real
         </button>
       </div>
 
-      {/* Divider */}
-      <div className="h-4 w-px bg-line-muted" />
+      <div className="h-4 w-px bg-[#2d333b]" />
 
-      {/* Account metrics (matching screenshot order) */}
+      {/* Account metrics */}
       {mode === "paper" ? (
         <div className="flex items-center gap-4 overflow-x-auto">
           {metrics.map((m) => (
             <div key={m.label} className="flex shrink-0 items-center gap-1">
-              <span className="text-[9px] uppercase tracking-wide text-fg-faint">
+              <span className="text-[9px] uppercase tracking-wide text-[#565c66]">
                 {m.label}
               </span>
               <span
                 className={cn(
                   "font-mono tabular-nums font-medium",
-                  m.color ?? "text-fg",
+                  m.color ?? "text-white",
                 )}
               >
                 {m.value}
@@ -202,52 +197,50 @@ export function AccountBar() {
           ))}
         </div>
       ) : (
-        <span className="text-[10px] text-red-500">
+        <span className="text-[10px] text-[#ff4757]">
           Broker connection required
         </span>
       )}
 
-      {/* Right side: Deposit button + data status */}
+      {/* Right side */}
       <div className="ml-auto flex items-center gap-2">
-        {/* Deposit button (prominent, like the screenshot) */}
+        {/* Deposit button */}
         {mode === "paper" && (
           <button
             onClick={handleDeposit}
-            className="rounded bg-accent px-3 py-0.5 text-[10px] font-bold text-accent-fg transition-colors hover:bg-accent-hover"
+            className="rounded bg-[#3b82f6] px-3 py-1 text-[10px] font-bold text-white transition-colors hover:bg-[#2563eb]"
           >
             Deposit
           </button>
         )}
 
-        {/* Withdraw + Reset (subtle) */}
+        {/* Withdraw / Reset */}
         {mode === "paper" && (
           <div className="flex items-center gap-1">
             <button
               onClick={handleWithdraw}
-              title="Withdraw to Vault"
-              className="focus-ring themed inline-flex h-5 items-center rounded px-1.5 text-[9px] text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+              className="text-[9px] text-[#8b949e] hover:text-white"
             >
               Withdraw
             </button>
+            <span className="text-[#565c66]">·</span>
             <button
               onClick={handleReset}
-              title="Reset virtual account"
-              className="focus-ring themed inline-flex h-5 items-center rounded px-1.5 text-[9px] text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+              className="text-[9px] text-[#8b949e] hover:text-white"
             >
               Reset
             </button>
           </div>
         )}
 
-        {/* Divider */}
-        {mode === "paper" && <div className="h-4 w-px bg-line-muted" />}
+        {mode === "paper" && <div className="h-4 w-px bg-[#2d333b]" />}
 
         {/* Data status */}
         <div className="flex items-center gap-1.5">
           <span className={cn("h-1.5 w-1.5 rounded-full", dotColor)} />
-          <span className="text-[10px] text-fg-muted">{dataStatus}</span>
-          <span className="text-fg-faint">·</span>
-          <span className="text-[10px] text-fg-faint">
+          <span className="text-[10px] text-[#8b949e]">{dataStatus}</span>
+          <span className="text-[#565c66]">·</span>
+          <span className="text-[10px] text-[#565c66]">
             {mounted ? cryptoProvider?.label ?? "—" : "…"}
           </span>
         </div>

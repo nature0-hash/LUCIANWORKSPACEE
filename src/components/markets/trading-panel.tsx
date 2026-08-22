@@ -25,7 +25,6 @@ export function TradingPanel() {
   const [orderType, setOrderType] = useState<OrderType>("market");
   const [side, setSide] = useState<OrderSide>("buy");
   const [quantity, setQuantity] = useState("0.01");
-  const [limitPrice, setLimitPrice] = useState("");
   const [stopLoss, setStopLoss] = useState("");
   const [takeProfit, setTakeProfit] = useState("");
   const [bottomTab, setBottomTab] = useState<BottomTab>("positions");
@@ -34,10 +33,8 @@ export function TradingPanel() {
 
   const instrument = instruments.find((i) => i.symbol === selectedSymbol);
   const price = selectedSymbol ? prices.get(selectedSymbol) : undefined;
-  const entryPrice =
-    orderType === "limit" && limitPrice ? parseFloat(limitPrice) : price ?? 0;
+  const entryPrice = price ?? 0;
   const qty = parseFloat(quantity) || 0;
-  const value = entryPrice * qty;
 
   const handleTrade = useCallback(() => {
     if (!selectedSymbol || !price || qty <= 0) return;
@@ -67,7 +64,11 @@ export function TradingPanel() {
       setClosed(getClosedPositions());
       refreshAccount();
     } else {
-      toast({ title: "Order rejected", description: result.error, variant: "destructive" });
+      toast({
+        title: "Order rejected",
+        description: result.error,
+        variant: "destructive",
+      });
     }
   }, [
     selectedSymbol,
@@ -96,9 +97,10 @@ export function TradingPanel() {
   );
 
   return (
-    <div className="themed flex h-full flex-col border-t border-line-muted bg-surface">
-      {/* Bottom panel tabs */}
-      <div className="flex h-7 shrink-0 items-center gap-1 border-b border-line-muted px-2">
+    <div className="flex h-full flex-col border-t border-[#2d333b] bg-[#1a1d23]">
+      {/* Tab bar + inline order entry */}
+      <div className="flex h-7 shrink-0 items-center gap-1 border-b border-[#1f2329] px-2">
+        {/* Tabs */}
         <TabBtn
           active={bottomTab === "positions"}
           onClick={() => {
@@ -124,7 +126,7 @@ export function TradingPanel() {
           count={closed.length}
         />
 
-        {/* Order entry inline on the right */}
+        {/* Inline order entry */}
         <div className="ml-auto flex items-center gap-1">
           {/* Order type */}
           <div className="flex gap-0.5">
@@ -135,8 +137,8 @@ export function TradingPanel() {
                 className={cn(
                   "rounded px-1 py-0.5 text-[9px] font-medium capitalize transition-colors",
                   orderType === t
-                    ? "bg-accent text-accent-fg"
-                    : "text-fg-muted hover:bg-hover",
+                    ? "bg-[#3b82f6] text-white"
+                    : "text-[#8b949e] hover:bg-[#22262f] hover:text-white",
                 )}
               >
                 {t}
@@ -144,14 +146,14 @@ export function TradingPanel() {
             ))}
           </div>
 
-          {/* Side */}
+          {/* Buy/Sell toggle */}
           <button
             onClick={() => setSide("buy")}
             className={cn(
               "rounded px-1.5 py-0.5 text-[9px] font-bold transition-colors",
               side === "buy"
-                ? "bg-green-600 text-white"
-                : "bg-surface-2 text-fg-muted hover:bg-hover",
+                ? "bg-[#00c087] text-white"
+                : "bg-[#22262f] text-[#8b949e] hover:text-white",
             )}
           >
             Buy
@@ -161,8 +163,8 @@ export function TradingPanel() {
             className={cn(
               "rounded px-1.5 py-0.5 text-[9px] font-bold transition-colors",
               side === "sell"
-                ? "bg-red-600 text-white"
-                : "bg-surface-2 text-fg-muted hover:bg-hover",
+                ? "bg-[#ff4757] text-white"
+                : "bg-[#22262f] text-[#8b949e] hover:text-white",
             )}
           >
             Sell
@@ -174,7 +176,7 @@ export function TradingPanel() {
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
             step="0.01"
-            className="h-5 w-14 rounded border border-line bg-inset px-1 text-center font-mono text-[10px] text-fg"
+            className="h-5 w-14 rounded border border-[#2d333b] bg-[#13161c] px-1 text-center font-mono text-[10px] text-white focus:outline-none"
             placeholder="0.01"
           />
 
@@ -184,7 +186,7 @@ export function TradingPanel() {
             value={stopLoss}
             onChange={(e) => setStopLoss(e.target.value)}
             placeholder="SL"
-            className="h-5 w-16 rounded border border-line bg-inset px-1 text-center font-mono text-[10px] text-fg"
+            className="h-5 w-16 rounded border border-[#2d333b] bg-[#13161c] px-1 text-center font-mono text-[10px] text-white focus:outline-none"
           />
 
           {/* TP */}
@@ -193,18 +195,18 @@ export function TradingPanel() {
             value={takeProfit}
             onChange={(e) => setTakeProfit(e.target.value)}
             placeholder="TP"
-            className="h-5 w-16 rounded border border-line bg-inset px-1 text-center font-mono text-[10px] text-fg"
+            className="h-5 w-16 rounded border border-[#2d333b] bg-[#13161c] px-1 text-center font-mono text-[10px] text-white focus:outline-none"
           />
 
-          {/* Execute */}
+          {/* Place */}
           <button
             onClick={handleTrade}
             disabled={!selectedSymbol || !price || qty <= 0}
             className={cn(
               "rounded px-2 py-0.5 text-[9px] font-bold text-white transition-colors disabled:opacity-50",
               side === "buy"
-                ? "bg-green-600 hover:bg-green-700"
-                : "bg-red-600 hover:bg-red-700",
+                ? "bg-[#00c087] hover:bg-[#00b377]"
+                : "bg-[#ff4757] hover:bg-[#e63946]",
             )}
           >
             {mode === "real" ? "Broker" : "Place"}
@@ -246,12 +248,12 @@ function TabBtn({
       onClick={onClick}
       className={cn(
         "flex items-center gap-1 text-[10px] font-medium transition-colors",
-        active ? "text-fg" : "text-fg-muted hover:text-fg",
+        active ? "text-white" : "text-[#8b949e] hover:text-white",
       )}
     >
       {label}
       {count > 0 && (
-        <span className="rounded bg-surface-2 px-1 text-[9px] tabular-nums">
+        <span className="rounded bg-[#22262f] px-1 text-[9px] tabular-nums">
           {count}
         </span>
       )}
@@ -270,15 +272,15 @@ function PositionsTable({
 }) {
   if (positions.length === 0) {
     return (
-      <div className="p-4 text-center text-[10px] text-fg-faint">
+      <div className="p-4 text-center text-[10px] text-[#565c66]">
         No open positions.
       </div>
     );
   }
   return (
     <table className="w-full text-[10px]">
-      <thead className="text-fg-faint">
-        <tr className="border-b border-line-muted">
+      <thead className="text-[#565c66]">
+        <tr className="border-b border-[#1f2329]">
           <th className="px-2 py-0.5 text-left font-medium">Symbol</th>
           <th className="px-2 py-0.5 text-left font-medium">Type</th>
           <th className="px-2 py-0.5 text-right font-medium">Volume</th>
@@ -301,36 +303,36 @@ function PositionsTable({
           return (
             <tr
               key={p.id}
-              className="border-b border-line-muted/50 hover:bg-hover"
+              className="border-b border-[#1f2329] hover:bg-[#22262f]"
             >
-              <td className="px-2 py-0.5 font-mono text-fg">{p.symbol}</td>
+              <td className="px-2 py-0.5 font-mono text-white">{p.symbol}</td>
               <td
                 className={cn(
                   "px-2 py-0.5 font-medium",
-                  p.side === "buy" ? "text-green-500" : "text-red-500",
+                  p.side === "buy" ? "text-[#00c087]" : "text-[#ff4757]",
                 )}
               >
                 {p.side === "buy" ? "Buy" : "Sell"}
               </td>
-              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-muted">
+              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-[#8b949e]">
                 {p.quantity}
               </td>
-              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-muted">
+              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-[#8b949e]">
                 {p.entryPrice.toFixed(2)}
               </td>
-              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-muted">
+              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-[#8b949e]">
                 {price?.toFixed(2) ?? "—"}
               </td>
-              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-faint">
+              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-[#565c66]">
                 {p.stopLoss > 0 ? p.stopLoss.toFixed(2) : "—"}
               </td>
-              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-faint">
+              <td className="px-2 py-0.5 text-right font-mono tabular-nums text-[#565c66]">
                 {p.takeProfit > 0 ? p.takeProfit.toFixed(2) : "—"}
               </td>
               <td
                 className={cn(
                   "px-2 py-0.5 text-right font-mono tabular-nums",
-                  pnl >= 0 ? "text-green-500" : "text-red-500",
+                  pnl >= 0 ? "text-[#00c087]" : "text-[#ff4757]",
                 )}
               >
                 {pnl >= 0 ? "+" : ""}
@@ -339,7 +341,7 @@ function PositionsTable({
               <td className="px-1 py-0.5">
                 <button
                   onClick={() => onClose(p.id)}
-                  className="text-[9px] text-fg-faint hover:text-fg"
+                  className="text-[9px] text-[#565c66] hover:text-white"
                 >
                   ✕
                 </button>
@@ -354,7 +356,7 @@ function PositionsTable({
 
 function PendingOrdersTable() {
   return (
-    <div className="p-4 text-center text-[10px] text-fg-faint">
+    <div className="p-4 text-center text-[10px] text-[#565c66]">
       No pending orders.
     </div>
   );
@@ -367,15 +369,15 @@ function HistoryTable({
 }) {
   if (positions.length === 0) {
     return (
-      <div className="p-4 text-center text-[10px] text-fg-faint">
+      <div className="p-4 text-center text-[10px] text-[#565c66]">
         No closed positions.
       </div>
     );
   }
   return (
     <table className="w-full text-[10px]">
-      <thead className="text-fg-faint">
-        <tr className="border-b border-line-muted">
+      <thead className="text-[#565c66]">
+        <tr className="border-b border-[#1f2329]">
           <th className="px-2 py-0.5 text-left font-medium">Symbol</th>
           <th className="px-2 py-0.5 text-left font-medium">Type</th>
           <th className="px-2 py-0.5 text-right font-medium">Volume</th>
@@ -389,36 +391,36 @@ function HistoryTable({
         {positions.slice(0, 50).map((p) => (
           <tr
             key={p.id}
-            className="border-b border-line-muted/50 hover:bg-hover"
+            className="border-b border-[#1f2329] hover:bg-[#22262f]"
           >
-            <td className="px-2 py-0.5 font-mono text-fg">{p.symbol}</td>
+            <td className="px-2 py-0.5 font-mono text-white">{p.symbol}</td>
             <td
               className={cn(
                 "px-2 py-0.5 font-medium",
-                p.side === "buy" ? "text-green-500" : "text-red-500",
+                p.side === "buy" ? "text-[#00c087]" : "text-[#ff4757]",
               )}
             >
               {p.side === "buy" ? "Buy" : "Sell"}
             </td>
-            <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-muted">
+            <td className="px-2 py-0.5 text-right font-mono tabular-nums text-[#8b949e]">
               {p.quantity}
             </td>
-            <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-muted">
+            <td className="px-2 py-0.5 text-right font-mono tabular-nums text-[#8b949e]">
               {p.entryPrice.toFixed(2)}
             </td>
-            <td className="px-2 py-0.5 text-right font-mono tabular-nums text-fg-muted">
+            <td className="px-2 py-0.5 text-right font-mono tabular-nums text-[#8b949e]">
               {p.exitPrice.toFixed(2)}
             </td>
             <td
               className={cn(
                 "px-2 py-0.5 text-right font-mono tabular-nums",
-                p.realizedPnl >= 0 ? "text-green-500" : "text-red-500",
+                p.realizedPnl >= 0 ? "text-[#00c087]" : "text-[#ff4757]",
               )}
             >
               {p.realizedPnl >= 0 ? "+" : ""}
               {p.realizedPnl.toFixed(2)}
             </td>
-            <td className="px-2 py-0.5 text-right text-[9px] text-fg-faint">
+            <td className="px-2 py-0.5 text-right text-[9px] text-[#565c66]">
               {new Date(p.closedAt).toLocaleString("en-US", {
                 month: "short",
                 day: "numeric",
