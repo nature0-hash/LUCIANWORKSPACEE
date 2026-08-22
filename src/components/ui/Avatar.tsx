@@ -1,53 +1,23 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import * as AvatarPrimitive from "@radix-ui/react-avatar"
-
-import { cn } from "@/lib/utils"
-
-function Avatar({
-  className,
-  ...props
-}: React.ComponentProps<typeof AvatarPrimitive.Root>) {
-  return (
-    <AvatarPrimitive.Root
-      data-slot="avatar"
-      className={cn(
-        "relative flex size-8 shrink-0 overflow-hidden rounded-full",
-        className
-      )}
-      {...props}
-    />
-  )
+interface AvatarProps {
+  size?: number;
+  className?: string;
 }
 
-function AvatarImage({
-  className,
-  ...props
-}: React.ComponentProps<typeof AvatarPrimitive.Image>) {
+/**
+ * Placeholder avatar — an accent-tinted disc with the Lucian initial.
+ *
+ * Used in the profile menu only. Real user-identity / authentication arrives
+ * in a later phase; for now this is just a visual placeholder.
+ */
+export function Avatar({ size = 32, className = "" }: AvatarProps) {
   return (
-    <AvatarPrimitive.Image
-      data-slot="avatar-image"
-      className={cn("aspect-square size-full", className)}
-      {...props}
-    />
-  )
+    <span
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
+      className={`themed inline-flex select-none items-center justify-center rounded-full border border-line bg-[color-mix(in_srgb,var(--accent)_22%,var(--surface))] font-semibold text-fg ${className}`}
+    >
+      L
+    </span>
+  );
 }
-
-function AvatarFallback({
-  className,
-  ...props
-}: React.ComponentProps<typeof AvatarPrimitive.Fallback>) {
-  return (
-    <AvatarPrimitive.Fallback
-      data-slot="avatar-fallback"
-      className={cn(
-        "bg-muted flex size-full items-center justify-center rounded-full",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-export { Avatar, AvatarImage, AvatarFallback }
