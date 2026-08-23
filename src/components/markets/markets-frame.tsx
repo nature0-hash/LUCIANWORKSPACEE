@@ -11,6 +11,7 @@ import {
   Moon,
 } from "lucide-react";
 import { BrandMark } from "@/components/branding/BrandMark";
+import { InstrumentsPanel } from "@/components/markets/instruments-panel";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import type { ThemeId } from "@/lib/themes";
@@ -100,6 +101,15 @@ export function MarketsFrame() {
           )}
         </button>
       </div>
+
+      {/* ── INSTRUMENTS PANEL (260px) ── */}
+      <aside
+        className={cn(
+          "themed w-[260px] shrink-0 border-r border-line-muted bg-surface",
+        )}
+      >
+        <InstrumentsPanel />
+      </aside>
 
       {/* ── RIGHT SIDE: strips + blank ── */}
       <div className="flex min-w-0 flex-1 flex-col">
