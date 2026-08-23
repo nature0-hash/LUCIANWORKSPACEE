@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   BarChart3,
   ArrowDownToLine,
@@ -39,6 +39,11 @@ const TOGGLE_BASE = "text-fg-faint hover:bg-hover hover:text-fg themed";
 
 export function MarketsFrame() {
   const { theme, setTheme } = useTheme();
+  // Instruments panel is open by default. Closing it via the X icon
+  // collapses the panel back into the rail — the Instruments rail
+  // button then loses its bright active state and looks like the
+  // other rail tools. Clicking it again re-opens the panel.
+  const [panelOpen, setPanelOpen] = useState(true);
 
   const isLight = useMemo(() => {
     return (
@@ -74,7 +79,12 @@ export function MarketsFrame() {
         <div className="mb-2 h-px w-12 bg-line-muted/60" />
 
         {/* Tools: icon → label → separator */}
-        <RailBtn icon={BarChart3} label="Instruments" active />
+        <RailBtn
+          icon={BarChart3}
+          label="Instruments"
+          active={panelOpen}
+          onClick={() => setPanelOpen((v) => !v)}
+        />
         <RailBtn icon={ArrowDownToLine} label="Deposit" />
         <RailBtn icon={ArrowUpFromLine} label="Withdraw" />
         <RailBtn icon={ArrowLeftRight} label="Transfer" />
@@ -102,14 +112,16 @@ export function MarketsFrame() {
         </button>
       </div>
 
-      {/* ── INSTRUMENTS PANEL (260px) ── */}
-      <aside
-        className={cn(
-          "themed w-[260px] shrink-0 border-r border-line-muted bg-surface",
-        )}
-      >
-        <InstrumentsPanel />
-      </aside>
+      {/* ── INSTRUMENTS PANEL (260px) ── conditional on panelOpen */}
+      {panelOpen && (
+        <aside
+          className={cn(
+            "themed w-[260px] shrink-0 border-r border-line-muted bg-surface",
+          )}
+        >
+          <InstrumentsPanel onClose={() => setPanelOpen(false)} />
+        </aside>
+      )}
 
       {/* ── RIGHT SIDE: strips + blank ── */}
       <div className="flex min-w-0 flex-1 flex-col">
@@ -179,11 +191,13 @@ function RailBtn({
   label,
   active = false,
   twoLine = false,
+  onClick,
 }: {
   icon: typeof BarChart3;
   label: string;
   active?: boolean;
   twoLine?: boolean;
+  onClick?: () => void;
 }) {
   const parts = twoLine ? splitTwoLine(label) : [label];
   return (
@@ -191,6 +205,7 @@ function RailBtn({
       <button
         type="button"
         title={label}
+        onClick={onClick}
         className={cn(
           "flex h-9 w-12 flex-col items-center justify-center rounded-md transition-colors themed",
           active ? ACTIVE : INACTIVE,

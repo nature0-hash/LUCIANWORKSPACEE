@@ -2,41 +2,89 @@
 
 /* LUCIAN Markets — Instruments panel (left sidebar inside Markets page).
  *
- * Matches the reference trading-terminal layout:
+ * Layout matches the reference trading terminal:
  *   ┌────────────────────────────────────┐
- *   │ Instruments                    X   │  header
+ *   │ Instruments                    X   │  header (close button works)
  *   ├────────────────────────────────────┤
- *   │ 🔍 Search instruments               │  search input
+ *   │ 🔍 Search instruments               │
  *   ├────────────────────────────────────┤
- *   │ All  Forex  Crypto  Indices  Metals │  chip row 1
+ *   │ ★ All  Forex  Crypto  Indices  Metals │  chip row 1 (★ = favorites)
  *   │ Energies  Intraday                  │  chip row 2
  *   ├────────────────────────────────────┤
- *   │ [icon] LINKUSD           11.612 11.700  │
- *   │        +0.08% S:8.8   L:11.588 H:11.678 │
+ *   │ ★ [icon] LINKUSD    11.612 11.700   │  row (★ invisible until hover)
+ *   │          +0.08% S:8.8  L:11.588 H:11.678 │
  *   │   ⋮                                    │
  *   └────────────────────────────────────┘
  *
  * Behaviors:
- *  - search filters the visible list by symbol or name
- *  - chips filter by UI category (All/Forex/Crypto/Indices/Metals/Energies/Intraday)
- *  - list scrolls smoothly
- *  - clicking a row selects it (highlight persists)
+ *  - Search filters the visible list by symbol or name
+ *  - Chip filters by UI category; the leading ★ chip filters to favorites
+ *  - Each row has a star button on the LEFT:
+ *      * hidden by default if not favorited
+ *      * appears on row hover
+ *      * click toggles favorite; favorited stars stay visible (filled)
+ *  - Favorites persist to localStorage
+ *  - List scrolls smoothly
+ *  - Clicking a row selects it (highlight persists)
+ *  - X close button calls onClose prop
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, Star, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  INSTRUMENT_CATALOG,
   filterByCategory,
-  type CatalogInstrument,
   type InstrumentCategory,
 } from "@/lib/markets/catalog";
 
+const FAVORITES_KEY = "lucian-markets-favorites";
+
+/** Hook: load + persist favorites as a Set<string> of symbols. */
+function useFavorites() {
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+
+  // Load on mount (client-only).
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FAVORITES_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw) as string[];
+        setFavorites(new Set(arr));
+      }
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
+
+  const persist = useCallback((next: Set<string>) => {
+    try {
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify([...next]));
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
+
+  const toggle = useCallback(
+    (symbol: string) => {
+      setFavorites((prev) => {
+        const next = new Set(prev);
+        if (next.has(symbol)) next.delete(symbol);
+        else next.add(symbol);
+        persist(next);
+        return next;
+      });
+    },
+    [persist],
+  );
+
+  return { favorites, toggle };
+}
+
 /* The reference terminal uses these chips in two rows:
-   Row 1: All · Forex · Crypto · Indices · Metals
-   Row 2: Energies · Intraday */
+   Row 1: ★ All Forex Crypto Indices Metals
+   Row 2: Energies Intraday */
 const CHIP_ROW_1: InstrumentCategory[] = [
+  "favorites",
   "all",
   "forex",
   "crypto",
@@ -45,81 +93,6 @@ const CHIP_ROW_1: InstrumentCategory[] = [
 ];
 const CHIP_ROW_2: InstrumentCategory[] = ["energies", "intraday"];
 
-interface DemoTicker {
-  bid: number;
-  ask: number;
-  low: number;
-  high: number;
-  changePct: number;
-  spread: number;
-}
-
-/** Anchor prices so demo prices look reasonable instead of starting near zero. */
-function anchorPrice(inst: CatalogInstrument): number {
-  switch (inst.assetClass) {
-    case "crypto":
-      if (inst.symbol.startsWith("BTC")) return 60000;
-      if (inst.symbol.startsWith("ETH")) return 3000;
-      if (inst.symbol.startsWith("SOL")) return 150;
-      if (inst.symbol.startsWith("XRP")) return 0.6;
-      if (inst.symbol.startsWith("DOGE")) return 0.15;
-      if (inst.symbol.startsWith("LINK")) return 11.6;
-      if (inst.symbol.startsWith("GRT")) return 0.015;
-      if (inst.symbol.startsWith("FIL")) return 0.7;
-      if (inst.symbol.startsWith("LTC")) return 80;
-      if (inst.symbol.startsWith("BCH")) return 400;
-      if (inst.symbol.startsWith("BNB")) return 600;
-      if (inst.symbol.startsWith("ADA")) return 0.45;
-      if (inst.symbol.startsWith("DASH")) return 30;
-      return 100;
-    case "forex":
-      return 1.1;
-    case "metals":
-      return inst.symbol.startsWith("XAU") ? 2400 : 30;
-    case "indices":
-      return 15000;
-    case "energies":
-      return 80;
-    case "stocks":
-      if (inst.symbol.startsWith("TSLA")) return 250;
-      if (inst.symbol.startsWith("NVDA")) return 120;
-      if (inst.symbol.startsWith("NFLX")) return 600;
-      if (inst.symbol.startsWith("AMZN")) return 180;
-      if (inst.symbol.startsWith("AAPL")) return 220;
-      if (inst.symbol.startsWith("GOOGL")) return 175;
-      if (inst.symbol.startsWith("META")) return 500;
-      if (inst.symbol.startsWith("BABA")) return 80;
-      if (inst.symbol.startsWith("MSFT")) return 420;
-      if (inst.symbol.startsWith("AMD")) return 160;
-      if (inst.symbol.startsWith("SHOP")) return 80;
-      return 300;
-    default:
-      return 100;
-  }
-}
-
-/** Deterministic pseudo-prices based on symbol hash so the panel looks
-    populated and stable across renders. */
-function demoTickerFor(inst: CatalogInstrument): DemoTicker {
-  let h = 0;
-  for (let i = 0; i < inst.symbol.length; i++) {
-    h = (h * 31 + inst.symbol.charCodeAt(i)) >>> 0;
-  }
-  const anchor = anchorPrice(inst);
-  const jitter = ((h % 1000) / 1000 - 0.5) * anchor * 0.02; // ±1% jitter
-  const mid = anchor + jitter;
-  const spread = mid * 0.0002 + 0.01;
-  const changePct = (((h >> 8) % 2000) - 1000) / 1000; // ±1.0
-  return {
-    bid: mid - spread / 2,
-    ask: mid + spread / 2,
-    low: mid * (1 - 0.004),
-    high: mid * (1 + 0.004),
-    changePct,
-    spread: Math.max(0.1, Math.round(spread * 10) / 10),
-  };
-}
-
 const UP = "#4bfa8f";
 const DOWN = "#ff5b5b";
 const NEUTRAL = "#9ea3ab";
@@ -127,7 +100,8 @@ const NEUTRAL = "#9ea3ab";
 interface Props {
   /** Optional callback when an instrument is selected. */
   onSelect?: (symbol: string) => void;
-  /** Optional close handler — if omitted, the X icon is decorative. */
+  /** Close handler — the X button calls this. The parent decides
+      what "close" means (typically hide the panel entirely). */
   onClose?: () => void;
   /** Initially selected symbol. */
   initialSelected?: string;
@@ -143,9 +117,13 @@ export function InstrumentsPanel({
   const [selected, setSelected] = useState<string | null>(
     initialSelected ?? null,
   );
+  const { favorites, toggle } = useFavorites();
 
   const visible = useMemo(() => {
     let list = filterByCategory(category);
+    if (category === "favorites") {
+      list = list.filter((i) => favorites.has(i.symbol));
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -155,7 +133,7 @@ export function InstrumentsPanel({
       );
     }
     return list;
-  }, [category, search]);
+  }, [category, search, favorites]);
 
   const handleSelect = (sym: string) => {
     setSelected(sym);
@@ -200,9 +178,12 @@ export function InstrumentsPanel({
           {CHIP_ROW_1.map((cat) => (
             <Chip
               key={cat}
-              label={cat === "all" ? "All" : cap(cat)}
+              cat={cat}
               active={category === cat}
               onClick={() => setCategory(cat)}
+              favoritesCount={
+                cat === "favorites" ? favorites.size : undefined
+              }
             />
           ))}
         </div>
@@ -210,7 +191,7 @@ export function InstrumentsPanel({
           {CHIP_ROW_2.map((cat) => (
             <Chip
               key={cat}
-              label={cap(cat)}
+              cat={cat}
               active={category === cat}
               onClick={() => setCategory(cat)}
             />
@@ -222,34 +203,46 @@ export function InstrumentsPanel({
       <div className="min-h-0 flex-1 overflow-y-auto themed">
         {visible.length === 0 ? (
           <div className="px-3 py-6 text-center text-[11px] text-fg-faint">
-            No instruments match &quot;{search}&quot;.
+            {category === "favorites" ? (
+              <>
+                No favorites yet.
+                <br />
+                Click ★ on a row to add.
+              </>
+            ) : search.trim() ? (
+              <>
+                No instruments match &quot;{search}&quot;.
+              </>
+            ) : (
+              <>No instruments.</>
+            )}
           </div>
         ) : (
           <ul className="m-0 list-none p-0">
             {visible.map((inst) => {
-              const t = demoTickerFor(inst);
               const isSel = selected === inst.symbol;
+              const isFav = favorites.has(inst.symbol);
               const chgColor = !inst.marketOpen
                 ? NEUTRAL
-                : t.changePct > 0
+                : (inst.changePct ?? 0) > 0
                 ? UP
-                : t.changePct < 0
+                : (inst.changePct ?? 0) < 0
                 ? DOWN
                 : NEUTRAL;
               const priceColor = !inst.marketOpen
                 ? "var(--fg)"
-                : t.changePct > 0
+                : (inst.changePct ?? 0) > 0
                 ? UP
-                : t.changePct < 0
+                : (inst.changePct ?? 0) < 0
                 ? DOWN
                 : "var(--fg)";
               return (
-                <li key={inst.symbol} className="relative">
+                <li key={inst.symbol} className="group relative">
                   <button
                     type="button"
                     onClick={() => handleSelect(inst.symbol)}
                     className={cn(
-                      "relative flex w-full items-stretch gap-2 border-b border-line-muted/60 px-2.5 py-2 text-left transition-colors themed",
+                      "relative flex w-full items-stretch gap-1.5 border-b border-line-muted/60 px-2.5 py-2 text-left transition-colors themed",
                       isSel ? "bg-active" : "hover:bg-hover",
                     )}
                   >
@@ -260,6 +253,40 @@ export function InstrumentsPanel({
                         className="absolute left-0 top-0 h-full w-[2px] bg-[var(--accent)]"
                       />
                     )}
+
+                    {/* Favorite star — invisible by default, appears on hover or when favorited */}
+                    <span className="flex w-3 shrink-0 items-start pt-0.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggle(inst.symbol);
+                        }}
+                        aria-label={
+                          isFav
+                            ? `Remove ${inst.symbol} from favorites`
+                            : `Add ${inst.symbol} to favorites`
+                        }
+                        title={
+                          isFav ? "Remove from favorites" : "Add to favorites"
+                        }
+                        className={cn(
+                          "transition-opacity",
+                          isFav
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-100 focus:opacity-100",
+                        )}
+                      >
+                        <Star
+                          className={cn(
+                            "h-3 w-3 transition-colors",
+                            isFav
+                              ? "fill-[var(--accent)] text-[var(--accent)]"
+                              : "text-fg-faint hover:text-fg",
+                          )}
+                        />
+                      </button>
+                    </span>
 
                     {/* Icon badge */}
                     <span
@@ -291,10 +318,10 @@ export function InstrumentsPanel({
                           <span style={{ color: NEUTRAL }}>Market closed</span>
                         ) : (
                           <span style={{ color: chgColor }}>
-                            {t.changePct >= 0 ? "+" : ""}
-                            {t.changePct.toFixed(2)}%{" "}
+                            {(inst.changePct ?? 0) >= 0 ? "+" : ""}
+                            {(inst.changePct ?? 0).toFixed(2)}%{" "}
                             <span style={{ color: NEUTRAL }}>
-                              S: {t.spread.toFixed(1)}
+                              S: {inst.spread.toFixed(1)}
                             </span>
                           </span>
                         )}
@@ -305,19 +332,19 @@ export function InstrumentsPanel({
                     <div className="flex shrink-0 gap-2 text-right">
                       <PriceCol
                         label="L"
-                        price={t.bid}
+                        price={inst.bid}
                         precision={inst.pricePrecision}
                         color={priceColor}
-                        subValue={t.low}
+                        subValue={inst.low}
                         subPrecision={inst.pricePrecision}
                         marketOpen={inst.marketOpen}
                       />
                       <PriceCol
                         label="H"
-                        price={t.ask}
+                        price={inst.ask}
                         precision={inst.pricePrecision}
                         color={priceColor}
-                        subValue={t.high}
+                        subValue={inst.high}
                         subPrecision={inst.pricePrecision}
                         marketOpen={inst.marketOpen}
                       />
@@ -335,7 +362,7 @@ export function InstrumentsPanel({
         <span>{visible.length} instruments</span>
         <span className="flex items-center gap-1">
           <Star className="h-2.5 w-2.5" />
-          {INSTRUMENT_CATALOG.filter((i) => i.marketOpen).length} live
+          {favorites.size} favorites
         </span>
       </div>
     </div>
@@ -347,26 +374,40 @@ function cap(s: string) {
 }
 
 function Chip({
-  label,
+  cat,
   active,
   onClick,
+  favoritesCount,
 }: {
-  label: string;
+  cat: InstrumentCategory;
   active: boolean;
   onClick: () => void;
+  favoritesCount?: number;
 }) {
+  const label = cat === "all" ? "All" : cat === "favorites" ? "★" : cap(cat);
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded px-2 py-0.5 text-[10px] font-medium transition-colors themed",
+        "flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors themed",
         active
           ? "bg-active text-fg"
           : "bg-surface-2 text-fg-muted hover:bg-hover hover:text-fg",
       )}
     >
-      {label}
+      {cat === "favorites" ? (
+        <Star
+          className={cn(
+            "h-2.5 w-2.5",
+            active && "fill-[var(--accent)] text-[var(--accent)]",
+          )}
+        />
+      ) : null}
+      <span>{label}</span>
+      {favoritesCount !== undefined && favoritesCount > 0 && (
+        <span className="text-[8px] text-fg-faint">({favoritesCount})</span>
+      )}
     </button>
   );
 }
@@ -394,18 +435,10 @@ function PriceCol({
         className="font-mono text-[11px] tabular-nums"
         style={{ color }}
       >
-        {marketOpen ? price.toFixed(precision) : "—"}
+        {marketOpen ? price.toFixed(precision) : price.toFixed(precision)}
       </div>
       <div className="font-mono text-[8px] tabular-nums text-fg-faint">
-        {marketOpen ? (
-          <>
-            {label}: {subValue.toFixed(subPrecision)}
-          </>
-        ) : (
-          <>
-            {label}: —
-          </>
-        )}
+        {label}: {subValue.toFixed(subPrecision)}
       </div>
     </div>
   );
