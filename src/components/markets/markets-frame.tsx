@@ -177,7 +177,7 @@ function RailBtn({
 }) {
   const parts = twoLine ? splitTwoLine(label) : [label];
   return (
-    <div className="flex w-full flex-col items-center">
+    <div className="mb-2.5 flex w-full flex-col items-center">
       <button
         type="button"
         title={label}
@@ -196,7 +196,7 @@ function RailBtn({
         </span>
       </button>
       {/* Thin horizontal separator under each tool item */}
-      <div className={cn("mt-1.5 h-px w-10", RAIL_SEPARATOR)} />
+      <div className={cn("mt-2 h-px w-10", RAIL_SEPARATOR)} />
     </div>
   );
 }
@@ -210,9 +210,14 @@ function splitTwoLine(label: string): string[] {
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
+  /* Vertical label-on-top / value-under layout (same pattern as
+     Virtual/Real) but WITHOUT the colored dot accent — just clean
+     label-over-value. */
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
-      <span className={cn("text-[10px]", TOPBAR_LABEL)}>{label}</span>
+    <div className="flex shrink-0 flex-col items-start leading-tight">
+      <span className={cn("text-[10px] font-medium", TOPBAR_LABEL)}>
+        {label}
+      </span>
       <span
         className={cn(
           "font-mono text-[12px] tabular-nums font-medium",
