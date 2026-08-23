@@ -29,7 +29,7 @@
  *  - Bottom strip tabs are visual only for this stage
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   createChart,
   CrosshairMode,
@@ -38,6 +38,7 @@ import {
   type ISeriesApi,
   type CandlestickData,
   type UTCTimestamp,
+  type IPriceLine,
 } from "lightweight-charts";
 import {
   Star,
@@ -66,6 +67,10 @@ import {
   ChevronDown,
   Maximize2,
   MinusCircle,
+  Save,
+  FolderOpen,
+  HelpCircle,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -89,12 +94,98 @@ const C_BLUE = "#2962ff"; // action blue
 const C_ACTIVE_TOOL = "#7c3aed"; // purple active-tool indicator
 
 /* ------------------------------------------------------------------ */
-/* Main component                                                      */
+/* Chart settings state + persistence                                  */
 /* ------------------------------------------------------------------ */
+
+const CHART_SETTINGS_KEY = "lucian-markets-chart-settings";
+
+interface ChartSettings {
+  showBid: boolean;
+  showAsk: boolean;
+  showMarketOrders: boolean;
+  showPendingOrders: boolean;
+}
+
+const DEFAULT_SETTINGS: ChartSettings = {
+  showBid: true,
+  showAsk: true,
+  showMarketOrders: true,
+  showPendingOrders: true,
+};
+
+/** Hook: load + persist chart view settings (4 toggles) in localStorage. */
+function useChartSettings() {
+  const [settings, setSettings] = useState<ChartSettings>(DEFAULT_SETTINGS);
+
+  // Load on mount (client-only).
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CHART_SETTINGS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<ChartSettings>;
+        setSettings((prev) => ({ ...prev, ...parsed }));
+      }
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
+
+  const update = useCallback((patch: Partial<ChartSettings>) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...patch };
+      try {
+        localStorage.setItem(CHART_SETTINGS_KEY, JSON.stringify(next));
+      } catch {
+        /* storage unavailable */
+      }
+      return next;
+    });
+  }, []);
+
+  return { settings, update };
+}
+
+/* ------------------------------------------------------------------ */
+/* Save / Load full chart config                                       */
+/* ------------------------------------------------------------------ */
+
+const CHART_CONFIG_KEY = "lucian-markets-chart-config";
+
+interface SavedChartConfig {
+  symbol: string;
+  timeframe: Timeframe;
+  showBid: boolean;
+  showAsk: boolean;
+  showMarketOrders: boolean;
+  showPendingOrders: boolean;
+  savedAt: number;
+}
+
+function saveChartConfig(config: SavedChartConfig): boolean {
+  try {
+    localStorage.setItem(CHART_CONFIG_KEY, JSON.stringify(config));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function loadChartConfig(): SavedChartConfig | null {
+  try {
+    const raw = localStorage.getItem(CHART_CONFIG_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as SavedChartConfig;
+  } catch {
+    return null;
+  }
+}
 
 export function ChartWorkspace() {
   const [timeframe, setTimeframe] = useState<Timeframe>("M1");
   const [selectedTool, setSelectedTool] = useState<string>("rect");
+  const { settings, update } = useChartSettings();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   // Static reference values matching the screenshot — these are
   // visual placeholders for the EURUSD snapshot. Real market data
@@ -102,11 +193,50 @@ export function ChartWorkspace() {
   const SELL_PRICE = 1.16744;
   const BUY_PRICE = 1.16796;
   const CHANGE_PCT = -0.03;
+  const SYMBOL = "EURUSD";
+
+  const handleSave = useCallback(() => {
+    const ok = saveChartConfig({
+      symbol: SYMBOL,
+      timeframe,
+      showBid: settings.showBid,
+      showAsk: settings.showAsk,
+      showMarketOrders: settings.showMarketOrders,
+      showPendingOrders: settings.showPendingOrders,
+      savedAt: Date.now(),
+    });
+    setSaveMessage(ok ? "Chart saved" : "Save failed");
+    setTimeout(() => setSaveMessage(null), 1800);
+  }, [timeframe, settings]);
+
+  const handleLoad = useCallback(() => {
+    const cfg = loadChartConfig();
+    if (!cfg) {
+      setSaveMessage("No saved chart found");
+      setTimeout(() => setSaveMessage(null), 1800);
+      return;
+    }
+    setTimeframe(cfg.timeframe);
+    update({
+      showBid: cfg.showBid,
+      showAsk: cfg.showAsk,
+      showMarketOrders: cfg.showMarketOrders,
+      showPendingOrders: cfg.showPendingOrders,
+    });
+    setSaveMessage("Chart loaded");
+    setTimeout(() => setSaveMessage(null), 1800);
+  }, [update]);
 
   return (
     <div className="themed flex h-full min-w-0 flex-1 flex-col bg-canvas">
       {/* ── Top chart toolbar ── */}
-      <ChartToolbar changePct={CHANGE_PCT} timeframe={timeframe} onTimeframe={setTimeframe} />
+      <ChartToolbar
+        changePct={CHANGE_PCT}
+        timeframe={timeframe}
+        onTimeframe={setTimeframe}
+        settingsOpen={settingsOpen}
+        onToggleSettings={() => setSettingsOpen((v) => !v)}
+      />
 
       {/* ── Body: drawing rail + chart + overlays ── */}
       <div className="relative flex min-h-0 flex-1">
@@ -114,10 +244,29 @@ export function ChartWorkspace() {
 
         {/* Chart container fills the rest */}
         <div className="relative min-w-0 flex-1 bg-[#131722]">
-          <CandleChart timeframe={timeframe} />
+          <CandleChart
+            timeframe={timeframe}
+            settings={settings}
+            bidPrice={SELL_PRICE}
+            askPrice={BUY_PRICE}
+          />
 
           {/* Quick Sell/Buy block — upper-left overlay */}
           <QuickTrade sellPrice={SELL_PRICE} buyPrice={BUY_PRICE} />
+
+          {/* Chart settings popover — anchored top-right */}
+          {settingsOpen && (
+            <ChartSettingsPopover
+              settings={settings}
+              onToggle={(key) =>
+                update({ [key]: !settings[key] } as Partial<ChartSettings>)
+              }
+              onSave={handleSave}
+              onLoad={handleLoad}
+              onClose={() => setSettingsOpen(false)}
+              message={saveMessage}
+            />
+          )}
         </div>
       </div>
 
@@ -135,10 +284,14 @@ function ChartToolbar({
   changePct,
   timeframe,
   onTimeframe,
+  settingsOpen,
+  onToggleSettings,
 }: {
   changePct: number;
   timeframe: Timeframe;
   onTimeframe: (t: Timeframe) => void;
+  settingsOpen: boolean;
+  onToggleSettings: () => void;
 }) {
   const [fav, setFav] = useState(false);
   const chgColor = changePct < 0 ? C_DOWN : C_UP;
@@ -231,8 +384,22 @@ function ChartToolbar({
       {/* Spacer pushes the gear to the far right */}
       <div className="flex-1" />
 
-      {/* Settings gear (far right) */}
-      <ToolbarBtn icon={Settings} title="Chart settings" />
+      {/* Settings gear (far right) — toggles the Chart Settings popover */}
+      <button
+        type="button"
+        title="Chart settings"
+        aria-label="Chart settings"
+        aria-expanded={settingsOpen}
+        onClick={onToggleSettings}
+        className={cn(
+          "flex h-6 w-6 items-center justify-center rounded transition-colors",
+          settingsOpen
+            ? "bg-[#2a2e39] text-white"
+            : "text-[#787b86] hover:bg-[#2a2e39] hover:text-white",
+        )}
+      >
+        <Settings className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
@@ -258,6 +425,173 @@ function ToolbarBtn({
 
 function Separator() {
   return <div className="h-4 w-px" style={{ background: C_BORDER }} />;
+}
+
+/* ------------------------------------------------------------------ */
+/* Chart Settings popover                                              */
+/* ------------------------------------------------------------------ */
+
+function ChartSettingsPopover({
+  settings,
+  onToggle,
+  onSave,
+  onLoad,
+  onClose,
+  message,
+}: {
+  settings: ChartSettings;
+  onToggle: (key: keyof ChartSettings) => void;
+  onSave: () => void;
+  onLoad: () => void;
+  onClose: () => void;
+  message: string | null;
+}) {
+  // Close on outside click + Escape key.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handlePointer = (e: MouseEvent) => {
+      if (!rootRef.current) return;
+      // Use composedPath so clicks inside shadow DOM or chart canvas
+      // are correctly detected as "outside" the popover.
+      if (!e.composedPath().includes(rootRef.current)) {
+        onClose();
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    // Defer attaching by one tick so the click that opened the popover
+    // doesn't immediately close it.
+    const id = window.setTimeout(() => {
+      document.addEventListener("mousedown", handlePointer);
+      document.addEventListener("keydown", handleKey);
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="absolute right-3 top-3 z-30 w-[230px] overflow-hidden rounded-md shadow-xl themed"
+      style={{
+        background: "#1e1e2d",
+        border: "1px solid #2a2a3c",
+        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.5)",
+      }}
+    >
+      {/* Header */}
+      <div className="px-4 pb-2 pt-3">
+        <span className="text-[13px] font-semibold text-white">Chart settings</span>
+      </div>
+
+      {/* Save / Load rows */}
+      <div className="pb-1">
+        <SettingsRow icon={Save} label="Save current chart" onClick={onSave} />
+        <SettingsRow icon={FolderOpen} label="Load saved chart" onClick={onLoad} />
+      </div>
+
+      {/* Divider */}
+      <div className="mx-4 my-1 h-px" style={{ background: "#2e2e3e" }} />
+
+      {/* Subheading */}
+      <div className="px-4 pb-1 pt-1">
+        <span className="text-[11px] text-[#8a8a9a]">
+          Select the trading tools you want to view.
+        </span>
+      </div>
+
+      {/* Checkbox rows */}
+      <div className="pb-2">
+        <CheckRow
+          label="Show Bid price"
+          checked={settings.showBid}
+          onChange={() => onToggle("showBid")}
+        />
+        <CheckRow
+          label="Show Ask price"
+          checked={settings.showAsk}
+          onChange={() => onToggle("showAsk")}
+        />
+        <CheckRow
+          label="Show Market orders"
+          checked={settings.showMarketOrders}
+          onChange={() => onToggle("showMarketOrders")}
+        />
+        <CheckRow
+          label="Show Pending orders"
+          checked={settings.showPendingOrders}
+          onChange={() => onToggle("showPendingOrders")}
+        />
+      </div>
+
+      {/* Optional transient message (Save/Load feedback) */}
+      {message && (
+        <div className="border-t px-4 py-1.5 text-[10px] text-[#8a8a9a]" style={{ borderColor: "#2e2e3e" }}>
+          {message}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsRow({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: typeof Save;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 px-4 py-2 text-left text-[12px] text-[#e0e0e0] transition-colors hover:bg-[#2a2a3c]"
+    >
+      <Icon className="h-3.5 w-3.5 text-[#8a8a9a]" />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function CheckRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <label
+      className="flex cursor-pointer items-center justify-between px-4 py-2 transition-colors hover:bg-[#252535]"
+    >
+      <span className="flex items-center gap-1.5 text-[12px] text-[#e0e0e0]">
+        {label}
+        <HelpCircle className="h-3 w-3 text-[#6a6a7a]" />
+      </span>
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={checked}
+        onClick={onChange}
+        className={cn(
+          "flex h-4 w-4 items-center justify-center rounded transition-colors",
+          checked
+            ? "border-0 bg-[#4b9eff] text-white"
+            : "border border-[#3a3a4c] bg-[#2a2a3c] text-transparent",
+        )}
+      >
+        <Check className="h-3 w-3" strokeWidth={3} />
+      </button>
+    </label>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -442,10 +776,22 @@ function RailButton({
 /* Candlestick chart (lightweight-charts)                              */
 /* ------------------------------------------------------------------ */
 
-function CandleChart({ timeframe }: { timeframe: Timeframe }) {
+function CandleChart({
+  timeframe,
+  settings,
+  bidPrice,
+  askPrice,
+}: {
+  timeframe: Timeframe;
+  settings: ChartSettings;
+  bidPrice: number;
+  askPrice: number;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const bidLineRef = useRef<IPriceLine | null>(null);
+  const askLineRef = useRef<IPriceLine | null>(null);
 
   // Deterministic demo candles — produces a stable, realistic-looking
   // chart. Re-generated when the timeframe changes so the chart visibly
@@ -511,8 +857,55 @@ function CandleChart({ timeframe }: { timeframe: Timeframe }) {
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      bidLineRef.current = null;
+      askLineRef.current = null;
     };
   }, [candles]);
+
+  // Sync Bid price line with settings.showBid.
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series) return;
+
+    // Always remove the existing line first; we'll re-add it if needed.
+    if (bidLineRef.current) {
+      series.removePriceLine(bidLineRef.current);
+      bidLineRef.current = null;
+    }
+
+    if (settings.showBid) {
+      bidLineRef.current = series.createPriceLine({
+        price: bidPrice,
+        color: C_DOWN,
+        lineWidth: 1,
+        lineStyle: 2, // dashed
+        axisLabelVisible: true,
+        title: "Bid",
+      });
+    }
+  }, [settings.showBid, bidPrice, candles]);
+
+  // Sync Ask price line with settings.showAsk.
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series) return;
+
+    if (askLineRef.current) {
+      series.removePriceLine(askLineRef.current);
+      askLineRef.current = null;
+    }
+
+    if (settings.showAsk) {
+      askLineRef.current = series.createPriceLine({
+        price: askPrice,
+        color: C_UP,
+        lineWidth: 1,
+        lineStyle: 2, // dashed
+        axisLabelVisible: true,
+        title: "Ask",
+      });
+    }
+  }, [settings.showAsk, askPrice, candles]);
 
   // Fit content when candles change
   useEffect(() => {
