@@ -99,7 +99,7 @@ export function InstrumentsPanel({
   };
 
   return (
-    <div className="themed flex h-full w-full flex-col bg-surface text-fg">
+    <div className="themed flex h-full min-h-0 w-full flex-col bg-surface text-fg">
       {/* ── Header ── */}
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-line-muted px-3">
         <span className="text-[12px] font-semibold tracking-wide text-fg">

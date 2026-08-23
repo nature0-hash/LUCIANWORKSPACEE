@@ -103,7 +103,7 @@ export function MarketsFrame() {
   };
 
   return (
-    <div className="themed flex h-full bg-canvas text-fg">
+    <div className="themed flex h-full min-h-0 overflow-hidden bg-canvas text-fg">
       {/* ── LEFT VERTICAL RAIL (88px) ── */}
       <div
         className={cn(
@@ -177,7 +177,7 @@ export function MarketsFrame() {
       )}
 
       {/* ── RIGHT SIDE: strips + chart workspace ── */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* ── THIN TOP STRIP (32px) ── */}
         <div
           className={cn(
@@ -231,7 +231,7 @@ export function MarketsFrame() {
         {/* Center + right: chart workspace and Intelligence panel share
             the remaining width as flex siblings so the chart resizes
             when the Intelligence panel expands/collapses. */}
-        <div className="flex min-w-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1">
           {/* Center trading workspace (chart + drawing rail + bottom panel) */}
           <ChartWorkspace pendingOrderPriceOverride={pendingOrderPrice} />
 

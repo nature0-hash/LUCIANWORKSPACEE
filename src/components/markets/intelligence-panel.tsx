@@ -176,7 +176,7 @@ function ExpandedPanel({
   onCollapse: () => void;
 }) {
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-full min-h-0 w-full flex-col">
       {/* Header: tab strip + collapse button */}
       <div className="flex h-8 shrink-0 items-center gap-0.5 border-b border-line-muted px-1 themed">
         <TabBtn
@@ -428,7 +428,7 @@ function ChatTab() {
   }, []);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Market context strip */}
       <div className="flex shrink-0 items-center gap-2 border-b border-line-muted px-3 py-1.5 themed">
         <span className="font-mono text-[11px] font-bold text-fg">
@@ -714,7 +714,7 @@ function FeedTab() {
   }, []);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Filter button row */}
       <div className="flex h-7 shrink-0 items-center gap-2 border-b border-line-muted px-2 themed">
         <button

@@ -60,6 +60,28 @@ import {
   Grid2x2,
   Square,
   Search,
+  MousePointer2,
+  Crosshair,
+  TrendingUp,
+  Minus as HorizontalLine,
+  MoveVertical as VerticalLine,
+  Triangle,
+  Circle,
+  Pencil,
+  Type as TypeIcon,
+  Eraser,
+  ZoomIn,
+  Camera,
+  Magnet,
+  Ruler,
+  Trash2,
+  Eye,
+  Layers,
+  Spline,
+  ArrowRight,
+  PenLine,
+  Calculator,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMarketsStore } from "@/store/markets";
@@ -137,6 +159,7 @@ const C_TEXT_MUTED = "#787b86";
 const C_UP = "#089981"; // bullish green
 const C_DOWN = "#f23645"; // bearish red
 const C_BLUE = "#2962ff"; // action blue
+const C_ACTIVE_TOOL = "#7c3aed"; // purple active-tool indicator
 
 /* ------------------------------------------------------------------ */
 /* Chart settings state + persistence                                  */
@@ -237,6 +260,8 @@ export function ChartWorkspace({
   // Chart layout — controls how many chart panes are visible.
   const [chartLayout, setChartLayout] = useState<ChartLayout>("single");
   const [layoutPopupOpen, setLayoutPopupOpen] = useState(false);
+  // Active drawing tool — shared across all chart panes.
+  const [activeTool, setActiveTool] = useState<string>("cursor");
 
   // ── Per-pane state ──
   // Each chart pane has its own selected symbol + timeframe.
@@ -306,10 +331,10 @@ export function ChartWorkspace({
   }, [update]);
 
   return (
-    <div className="themed flex h-full min-w-0 flex-1 flex-col bg-canvas">
+    <div className="themed flex h-full min-h-0 min-w-0 flex-1 flex-col bg-canvas">
       {/* ── Body: drawing rail + layout strip + chart panes ── */}
       <div className="relative flex min-h-0 flex-1">
-        <DrawingRail selected="" onSelect={() => {}} />
+        <DrawingRail selected={activeTool} onSelect={setActiveTool} />
 
         {/* Layout strip — slim column with the Layout button at top.
             The popup opens to the right of this strip. */}
@@ -1168,27 +1193,267 @@ function ChartPaneGrid({
 /* ------------------------------------------------------------------ */
 /* Drawing rail (left vertical chart toolbar)                          */
 /* ------------------------------------------------------------------ */
-/* The drawing toolbar's icons have been intentionally removed for this
-   step. The container (width + border + background) is kept so the
-   overall Markets layout structure remains stable. Tools will be
-   re-added one by one in future updates. */
+
+interface RailTool {
+  /** Stable ID — also used as the cursor/drawing mode key. */
+  id: string;
+  /** Lucide icon component. */
+  icon: typeof MousePointer2;
+  /** Tooltip label. */
+  label: string;
+  /** If present, clicking this tool opens a popup with these variants.
+      The first variant is the default sub-tool. */
+  variants?: { id: string; label: string; icon: typeof MousePointer2 }[];
+}
+
+const RAIL_GROUPS: RailTool[][] = [
+  /* Group 1 — selection / measurement */
+  [
+    { id: "cursor", icon: MousePointer2, label: "Cursor" },
+    { id: "crosshair", icon: Crosshair, label: "Crosshair" },
+    { id: "measure", icon: Ruler, label: "Measure" },
+  ],
+  /* Group 2 — line tools (opens Trend Lines popup) */
+  [
+    {
+      id: "trend-line",
+      icon: TrendingUp,
+      label: "Trend Lines",
+      variants: [
+        { id: "trend-line", label: "Trend Line", icon: TrendingUp },
+        { id: "extended-line", label: "Extended Line", icon: Spline },
+        { id: "arrow", label: "Arrow", icon: ArrowRight },
+        { id: "ray", label: "Ray", icon: ArrowRight },
+        { id: "horizontal-line", label: "Horizontal Line", icon: HorizontalLine },
+        { id: "vertical-line", label: "Vertical Line", icon: VerticalLine },
+        { id: "path", label: "Path", icon: Spline },
+      ],
+    },
+    { id: "horizontal-line", icon: HorizontalLine, label: "Horizontal Line" },
+    { id: "vertical-line", icon: VerticalLine, label: "Vertical Line" },
+  ],
+  /* Group 3 — shapes + fibonacci */
+  [
+    {
+      id: "rectangle",
+      icon: Square,
+      label: "Shapes",
+      variants: [
+        { id: "rectangle", label: "Rectangle", icon: Square },
+        { id: "ellipse", label: "Ellipse", icon: Circle },
+        { id: "triangle", label: "Triangle", icon: Triangle },
+      ],
+    },
+    {
+      id: "fibonacci",
+      icon: Spline,
+      label: "Fibonacci",
+      variants: [
+        { id: "fib-retracement", label: "Fib Retracement", icon: Spline },
+        { id: "fib-arc", label: "Fib Arcs", icon: Circle },
+        { id: "fib-fan", label: "Fib Fan", icon: TrendingUp },
+      ],
+    },
+  ],
+  /* Group 4 — annotation + freehand */
+  [
+    { id: "text", icon: TypeIcon, label: "Text" },
+    { id: "brush", icon: PenLine, label: "Brush" },
+    { id: "pencil", icon: Pencil, label: "Pencil" },
+  ],
+  /* Group 5 — indicators + objects + visibility + zoom + capture + settings */
+  [
+    { id: "indicators", icon: Calculator, label: "Indicators" },
+    { id: "ai-assistant", icon: Bot, label: "AI Assistant" },
+    { id: "objects", icon: Layers, label: "Objects" },
+    { id: "visibility", icon: Eye, label: "Visibility" },
+    { id: "magnet", icon: Magnet, label: "Magnet" },
+    { id: "zoom", icon: ZoomIn, label: "Zoom" },
+    { id: "screenshot", icon: Camera, label: "Screenshot" },
+    { id: "trash", icon: Trash2, label: "Remove drawings" },
+  ],
+];
 
 function DrawingRail({
-  selected: _selected,
-  onSelect: _onSelect,
+  selected,
+  onSelect,
 }: {
   selected: string;
   onSelect: (id: string) => void;
 }) {
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const railRef = useRef<HTMLDivElement>(null);
+
+  // Close the open menu on outside click or Escape.
+  useEffect(() => {
+    if (!openMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (!railRef.current) return;
+      if (!e.composedPath().includes(railRef.current)) setOpenMenu(null);
+    };
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpenMenu(null);
+        onSelect("cursor");
+      }
+    };
+    const id = window.setTimeout(() => {
+      document.addEventListener("mousedown", handler);
+      document.addEventListener("keydown", keyHandler);
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", keyHandler);
+    };
+  }, [openMenu, onSelect]);
+
   return (
     <div
-      className="flex w-8 shrink-0 flex-col items-center border-r themed"
+      ref={railRef}
+      className="relative flex w-9 shrink-0 flex-col items-center gap-0.5 overflow-y-auto border-r py-1 themed"
+      style={{ background: C_PANEL, borderColor: C_BORDER }}
+    >
+      {RAIL_GROUPS.map((group, gi) => (
+        <div key={gi} className="flex flex-col items-center gap-0.5">
+          {group.map((tool) => (
+            <RailButton
+              key={tool.id}
+              tool={tool}
+              active={selected === tool.id}
+              menuOpen={openMenu === tool.id}
+              onClick={() => {
+                if (tool.variants) {
+                  setOpenMenu((prev) => (prev === tool.id ? null : tool.id));
+                }
+                onSelect(tool.id);
+              }}
+              onVariantSelect={(variantId) => {
+                onSelect(variantId);
+                setOpenMenu(null);
+              }}
+            />
+          ))}
+          {gi < RAIL_GROUPS.length - 1 && (
+            <div className="my-1 h-px w-5" style={{ background: C_BORDER }} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RailButton({
+  tool,
+  active,
+  menuOpen,
+  onClick,
+  onVariantSelect,
+}: {
+  tool: RailTool;
+  active: boolean;
+  menuOpen: boolean;
+  onClick: () => void;
+  onVariantSelect: (variantId: string) => void;
+}) {
+  const Icon = tool.icon;
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        title={tool.label}
+        aria-label={tool.label}
+        onClick={onClick}
+        className={cn(
+          "relative flex h-7 w-7 items-center justify-center rounded transition-colors",
+          active
+            ? "text-white"
+            : "text-[#787b86] hover:bg-[#2a2e39] hover:text-white",
+        )}
+        style={active ? { background: "#2a2e39" } : undefined}
+      >
+        {active && (
+          <span
+            aria-hidden
+            className="absolute left-[-4px] top-0 h-full w-[3px] rounded-r"
+            style={{ background: C_ACTIVE_TOOL }}
+          />
+        )}
+        <Icon className="h-[18px] w-[18px]" />
+        {tool.variants && (
+          <ChevronDown
+            className="absolute -right-0.5 -bottom-0.5 h-2 w-2 text-[#787b86]"
+            style={{ transform: menuOpen ? "rotate(180deg)" : undefined }}
+          />
+        )}
+      </button>
+      {/* Tool menu popup — opens to the right of the rail */}
+      {tool.variants && menuOpen && (
+        <ToolMenuPopup
+          title={tool.label}
+          variants={tool.variants}
+          selectedId={active ? tool.id : undefined}
+          onSelect={onVariantSelect}
+        />
+      )}
+    </div>
+  );
+}
+
+function ToolMenuPopup({
+  title,
+  variants,
+  selectedId,
+  onSelect,
+}: {
+  title: string;
+  variants: { id: string; label: string; icon: typeof MousePointer2 }[];
+  selectedId?: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div
+      className="absolute left-full top-0 z-30 ml-1 w-[180px] overflow-hidden rounded-md shadow-xl themed"
       style={{
-        background: C_PANEL,
-        borderColor: C_BORDER,
+        background: "#1e1e2d",
+        border: "1px solid #2a2a3c",
+        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.5)",
       }}
-      aria-hidden
-    />
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 pb-1.5 pt-2">
+        <span className="text-[11px] font-semibold text-white">{title}</span>
+      </div>
+      {/* Variants list */}
+      <div className="max-h-[280px] overflow-y-auto pb-1">
+        {variants.map((v) => {
+          const Icon = v.icon;
+          const isActive = v.id === selectedId;
+          return (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() => onSelect(v.id)}
+              className={cn(
+                "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors themed",
+                isActive
+                  ? "bg-active text-[var(--accent)]"
+                  : "text-[#c4cbde] hover:bg-[#2a2a3c] hover:text-white",
+              )}
+            >
+              <Icon
+                className={cn(
+                  "h-3 w-3",
+                  isActive ? "text-[var(--accent)]" : "text-[#787b86]",
+                )}
+              />
+              <span className="flex-1">{v.label}</span>
+              {isActive && <Check className="h-3 w-3 text-[var(--accent)]" strokeWidth={3} />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
