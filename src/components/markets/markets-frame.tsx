@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   ArrowDownToLine,
@@ -12,10 +12,12 @@ import {
 } from "lucide-react";
 import { BrandMark } from "@/components/branding/BrandMark";
 import { InstrumentsPanel } from "@/components/markets/instruments-panel";
+import { OrderDetailsPanel } from "@/components/markets/order-details-panel";
 import { ChartWorkspace } from "@/components/markets/chart-workspace";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import type { ThemeId } from "@/lib/themes";
+import { useMarketsStore } from "@/store/markets";
 
 /* ------------------------------------------------------------------ */
 /* Theme-aware tokens                                                  */
@@ -40,11 +42,18 @@ const TOGGLE_BASE = "text-fg-faint hover:bg-hover hover:text-fg themed";
 
 export function MarketsFrame() {
   const { theme, setTheme } = useTheme();
-  // Instruments panel is open by default. Closing it via the X icon
-  // collapses the panel back into the rail — the Instruments rail
-  // button then loses its bright active state and looks like the
-  // other rail tools. Clicking it again re-opens the panel.
+  // panelOpen = is the left contextual area visible at all?
+  // leftPanelMode = which view (Instruments | OrderDetails) is shown when open.
   const [panelOpen, setPanelOpen] = useState(true);
+  const leftPanelMode = useMarketsStore((s) => s.leftPanelMode);
+  const setLeftPanelMode = useMarketsStore((s) => s.setLeftPanelMode);
+  const setToggleInstrumentsHandler = useMarketsStore(
+    (s) => s.setToggleInstrumentsHandler,
+  );
+
+  // ChartWorkspace lifts pending-order price up here so OrderDetails can
+  // update the chart's pending-order line via this callback.
+  const [pendingOrderPrice, setPendingOrderPrice] = useState<number | null>(null);
 
   const isLight = useMemo(() => {
     return (
@@ -54,12 +63,42 @@ export function MarketsFrame() {
   }, [theme]);
 
   const toggleTheme = () => {
-    /* Toggle between the default dark theme and the default light theme.
-       This keeps Markets consistent with the rest of LUCIAN — the same
-       data-theme attribute that drives the workspace chrome also drives
-       Markets. */
     const next: ThemeId = isLight ? "midnight-gray" : "natural-white";
     setTheme(next);
+  };
+
+  // Register the toggleInstruments handler in the store so the chart
+  // toolbar (which lives deep inside ChartWorkspace) can toggle the
+  // Instruments panel without prop drilling. Updates on every render
+  // so the latest panelOpen is captured.
+  useEffect(() => {
+    setToggleInstrumentsHandler(() => () => {
+      setPanelOpen((v) => !v);
+      // Always switch back to "instruments" mode when toggling via the
+      // chart toolbar so the user sees the Instruments list, not Order
+      // Details, after clicking the symbol.
+      setLeftPanelMode("instruments");
+    });
+    return () => setToggleInstrumentsHandler(undefined);
+  }, [setToggleInstrumentsHandler, setLeftPanelMode]);
+
+  // Refresh trading state (positions/pending/closed/account) on mount
+  // so the bottom panel + counts reflect any persisted Virtual trades.
+  useEffect(() => {
+    useMarketsStore.getState().refreshTrading();
+  }, []);
+
+  const handleRailInstrumentsClick = () => {
+    if (!panelOpen) {
+      setPanelOpen(true);
+      setLeftPanelMode("instruments");
+    } else if (leftPanelMode === "instruments") {
+      setPanelOpen(false);
+    } else {
+      // Panel is open in "order" mode → clicking the rail's Instruments
+      // button switches back to instruments mode.
+      setLeftPanelMode("instruments");
+    }
   };
 
   return (
@@ -83,8 +122,8 @@ export function MarketsFrame() {
         <RailBtn
           icon={BarChart3}
           label="Instruments"
-          active={panelOpen}
-          onClick={() => setPanelOpen((v) => !v)}
+          active={panelOpen && leftPanelMode === "instruments"}
+          onClick={handleRailInstrumentsClick}
         />
         <RailBtn icon={ArrowDownToLine} label="Deposit" />
         <RailBtn icon={ArrowUpFromLine} label="Withdraw" />
@@ -113,18 +152,30 @@ export function MarketsFrame() {
         </button>
       </div>
 
-      {/* ── INSTRUMENTS PANEL (260px) ── conditional on panelOpen */}
+      {/* ── LEFT CONTEXTUAL PANEL (260px) ── conditional on panelOpen */}
       {panelOpen && (
         <aside
           className={cn(
             "themed w-[260px] shrink-0 border-r border-line-muted bg-surface",
           )}
         >
-          <InstrumentsPanel onClose={() => setPanelOpen(false)} />
+          {leftPanelMode === "instruments" ? (
+            <InstrumentsPanel
+              onClose={() => setPanelOpen(false)}
+              onSelect={(symbol) => {
+                useMarketsStore.getState().selectSymbol(symbol);
+              }}
+            />
+          ) : (
+            <OrderDetailsPanel
+              onClose={() => setLeftPanelMode("instruments")}
+              onPendingPriceChange={setPendingOrderPrice}
+            />
+          )}
         </aside>
       )}
 
-      {/* ── RIGHT SIDE: strips + blank ── */}
+      {/* ── RIGHT SIDE: strips + chart workspace ── */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* ── THIN TOP STRIP (32px) ── */}
         <div
@@ -150,7 +201,7 @@ export function MarketsFrame() {
 
           {/* Push account-information group toward the right, near Deposit */}
           <div className="ml-auto flex items-center gap-4">
-            {/* ── Account metrics in screenshot order ── */}
+            {/* Account metrics in screenshot order */}
             <Metric label="Margin" value="$0.00" />
             <Metric label="Free margin" value="$0.00" />
             <Metric label="Margin level" value="0.00%" />
@@ -176,8 +227,8 @@ export function MarketsFrame() {
           </div>
         </div>
 
-        {/* Center trading workspace (chart + drawing rail + bottom strip) */}
-        <ChartWorkspace />
+        {/* Center trading workspace (chart + drawing rail + bottom panel) */}
+        <ChartWorkspace pendingOrderPriceOverride={pendingOrderPrice} />
       </div>
     </div>
   );

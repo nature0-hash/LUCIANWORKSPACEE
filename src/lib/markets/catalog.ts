@@ -223,3 +223,10 @@ export function filterByCategory(
   if (category === "favorites") return INSTRUMENT_CATALOG; // caller filters
   return INSTRUMENT_CATALOG.filter((i) => i.category === category);
 }
+
+/** Look up a single instrument by its symbol. Returns null if not found. */
+export function getInstrumentBySymbol(
+  symbol: string,
+): CatalogInstrument | null {
+  return INSTRUMENT_CATALOG.find((i) => i.symbol === symbol) ?? null;
+}

@@ -65,14 +65,18 @@ import {
   Pencil,
   Magnet,
   ChevronDown,
+  ChevronUp,
   Maximize2,
   MinusCircle,
   Save,
   FolderOpen,
   HelpCircle,
   Check,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMarketsStore } from "@/store/markets";
+import { getInstrumentBySymbol } from "@/lib/markets/catalog";
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
@@ -180,20 +184,42 @@ function loadChartConfig(): SavedChartConfig | null {
   }
 }
 
-export function ChartWorkspace() {
+export function ChartWorkspace({
+  pendingOrderPriceOverride,
+}: {
+  pendingOrderPriceOverride?: number | null;
+}) {
   const [timeframe, setTimeframe] = useState<Timeframe>("M1");
   const [selectedTool, setSelectedTool] = useState<string>("rect");
   const { settings, update } = useChartSettings();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [bottomExpanded, setBottomExpanded] = useState(false);
+  const [internalPendingPrice, setInternalPendingPrice] = useState<number | null>(null);
+  // The pending-order chart line takes its price from EITHER the lifted
+  // override (from OrderDetails panel) OR the bottom panel's pending tab,
+  // whichever was last set. The override takes priority when defined.
+  const pendingOrderPrice =
+    pendingOrderPriceOverride !== undefined
+      ? pendingOrderPriceOverride
+      : internalPendingPrice;
 
-  // Static reference values matching the screenshot — these are
-  // visual placeholders for the EURUSD snapshot. Real market data
-  // will overlay these once a provider is wired in.
-  const SELL_PRICE = 1.16744;
-  const BUY_PRICE = 1.16796;
-  const CHANGE_PCT = -0.03;
-  const SYMBOL = "EURUSD";
+  // ── Selected instrument comes from the shared markets store ──
+  const selectedSymbol = useMarketsStore((s) => s.selectedSymbol);
+  const onToggleInstruments = useMarketsStore((s) => s.onToggleInstruments ?? (() => {}));
+  const instrument = useMemo(
+    () => (selectedSymbol ? getInstrumentBySymbol(selectedSymbol) : null),
+    [selectedSymbol],
+  );
+
+  // Use the catalog's bid/ask/changePct for the selected instrument.
+  // Falls back to EURUSD defaults when no selection yet.
+  const fallback = getInstrumentBySymbol("EURUSD");
+  const inst = instrument ?? fallback;
+  const SELL_PRICE = inst?.bid ?? 1.16744;
+  const BUY_PRICE = inst?.ask ?? 1.16796;
+  const CHANGE_PCT = inst?.changePct ?? 0;
+  const SYMBOL = inst?.symbol ?? "EURUSD";
 
   const handleSave = useCallback(() => {
     const ok = saveChartConfig({
@@ -207,7 +233,7 @@ export function ChartWorkspace() {
     });
     setSaveMessage(ok ? "Chart saved" : "Save failed");
     setTimeout(() => setSaveMessage(null), 1800);
-  }, [timeframe, settings]);
+  }, [timeframe, settings, SYMBOL]);
 
   const handleLoad = useCallback(() => {
     const cfg = loadChartConfig();
@@ -231,11 +257,14 @@ export function ChartWorkspace() {
     <div className="themed flex h-full min-w-0 flex-1 flex-col bg-canvas">
       {/* ── Top chart toolbar ── */}
       <ChartToolbar
+        symbol={SYMBOL}
         changePct={CHANGE_PCT}
         timeframe={timeframe}
         onTimeframe={setTimeframe}
         settingsOpen={settingsOpen}
         onToggleSettings={() => setSettingsOpen((v) => !v)}
+        onToggleInstruments={onToggleInstruments}
+        onNewOrder={() => useMarketsStore.getState().setLeftPanelMode("order")}
       />
 
       {/* ── Body: drawing rail + chart + overlays ── */}
@@ -246,9 +275,11 @@ export function ChartWorkspace() {
         <div className="relative min-w-0 flex-1 bg-[#131722]">
           <CandleChart
             timeframe={timeframe}
+            symbol={SYMBOL}
             settings={settings}
             bidPrice={SELL_PRICE}
             askPrice={BUY_PRICE}
+            pendingOrderPrice={pendingOrderPrice}
           />
 
           {/* Quick Sell/Buy block — upper-left overlay */}
@@ -270,8 +301,12 @@ export function ChartWorkspace() {
         </div>
       </div>
 
-      {/* ── Bottom trading strip ── */}
-      <BottomStrip />
+      {/* ── Bottom trading strip + optional expanded panel ── */}
+      <BottomPanel
+        expanded={bottomExpanded}
+        onToggleExpand={() => setBottomExpanded((v) => !v)}
+        onPendingPriceChange={setInternalPendingPrice}
+      />
     </div>
   );
 }
@@ -281,21 +316,31 @@ export function ChartWorkspace() {
 /* ------------------------------------------------------------------ */
 
 function ChartToolbar({
+  symbol,
   changePct,
   timeframe,
   onTimeframe,
   settingsOpen,
   onToggleSettings,
+  onToggleInstruments,
+  onNewOrder,
 }: {
-  changePct: number;
+  symbol: string;
+  changePct: number | null;
   timeframe: Timeframe;
   onTimeframe: (t: Timeframe) => void;
   settingsOpen: boolean;
   onToggleSettings: () => void;
+  onToggleInstruments: () => void;
+  onNewOrder: () => void;
 }) {
   const [fav, setFav] = useState(false);
-  const chgColor = changePct < 0 ? C_DOWN : C_UP;
-  const chgSign = changePct >= 0 ? "+" : "";
+  const chgColor = (changePct ?? 0) < 0 ? C_DOWN : C_UP;
+  const chgSign = (changePct ?? 0) >= 0 ? "+" : "";
+  const chgText =
+    changePct === null
+      ? "0.00%"
+      : `${chgSign}${changePct.toFixed(2)}%`;
 
   return (
     <div
@@ -305,16 +350,22 @@ function ChartToolbar({
         borderColor: C_BORDER,
       }}
     >
-      {/* Instrument symbol */}
-      <span className="text-[13px] font-bold text-white">EURUSD</span>
+      {/* Instrument symbol — clicking toggles the Instruments panel */}
+      <button
+        type="button"
+        onClick={onToggleInstruments}
+        title="Toggle instruments panel"
+        className="rounded px-1 py-0.5 text-[13px] font-bold text-white transition-colors hover:bg-[#2a2e39]"
+      >
+        {symbol}
+      </button>
 
       {/* Percentage badge */}
       <span
         className="rounded px-1.5 py-0.5 text-[10px] font-bold text-white"
         style={{ background: chgColor }}
       >
-        {chgSign}
-        {changePct.toFixed(2)}%
+        {chgText}
       </span>
 
       {/* Favorite star */}
@@ -361,9 +412,10 @@ function ChartToolbar({
 
       <Separator />
 
-      {/* New order button */}
+      {/* New order button — opens Order Details in the left contextual panel */}
       <button
         type="button"
+        onClick={onNewOrder}
         className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:opacity-90"
         style={{ background: C_BLUE }}
       >
@@ -778,27 +830,32 @@ function RailButton({
 
 function CandleChart({
   timeframe,
+  symbol,
   settings,
   bidPrice,
   askPrice,
+  pendingOrderPrice,
 }: {
   timeframe: Timeframe;
+  symbol: string;
   settings: ChartSettings;
   bidPrice: number;
   askPrice: number;
+  pendingOrderPrice: number | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const bidLineRef = useRef<IPriceLine | null>(null);
   const askLineRef = useRef<IPriceLine | null>(null);
+  const pendingLineRef = useRef<IPriceLine | null>(null);
 
-  // Deterministic demo candles — produces a stable, realistic-looking
-  // chart. Re-generated when the timeframe changes so the chart visibly
-  // responds to the toolbar control.
+  // Deterministic demo candles around the selected instrument's mid-price.
+  // Re-keyed on symbol AND timeframe so the chart visibly responds to both.
+  const midPrice = useMemo(() => (bidPrice + askPrice) / 2, [bidPrice, askPrice]);
   const candles = useMemo<CandlestickData<UTCTimestamp>[]>(
-    () => generateDemoCandles(timeframe, 120),
-    [timeframe],
+    () => generateDemoCandles(timeframe, 120, midPrice, symbol),
+    [timeframe, midPrice, symbol],
   );
 
   useEffect(() => {
@@ -859,6 +916,7 @@ function CandleChart({
       seriesRef.current = null;
       bidLineRef.current = null;
       askLineRef.current = null;
+      pendingLineRef.current = null;
     };
   }, [candles]);
 
@@ -907,6 +965,28 @@ function CandleChart({
     }
   }, [settings.showAsk, askPrice, candles]);
 
+  // Sync pending-order price line.
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series) return;
+
+    if (pendingLineRef.current) {
+      series.removePriceLine(pendingLineRef.current);
+      pendingLineRef.current = null;
+    }
+
+    if (pendingOrderPrice !== null && Number.isFinite(pendingOrderPrice)) {
+      pendingLineRef.current = series.createPriceLine({
+        price: pendingOrderPrice,
+        color: "#7c3aed", // purple — matches the rail active-tool color
+        lineWidth: 1,
+        lineStyle: 0, // solid
+        axisLabelVisible: true,
+        title: "Pending order",
+      });
+    }
+  }, [pendingOrderPrice, candles]);
+
   // Fit content when candles change
   useEffect(() => {
     chartRef.current?.timeScale().fitContent();
@@ -915,13 +995,21 @@ function CandleChart({
   return <div ref={containerRef} className="absolute inset-0 h-full w-full" />;
 }
 
-/** Generate deterministic demo candles around a realistic EURUSD price. */
+/** Generate deterministic demo candles around the supplied mid-price.
+    Scales volatility by symbol so e.g. BTCUSD candles look bigger than
+    EURUSD candles. */
 function generateDemoCandles(
   timeframe: Timeframe,
   count: number,
+  midPrice: number,
+  symbol: string,
 ): CandlestickData<UTCTimestamp>[] {
-  // Seed shifts per timeframe so the chart visibly changes when
-  // the user picks a different timeframe in the toolbar.
+  // Seed shifts per timeframe + symbol so the chart visibly changes
+  // when either is changed in the toolbar.
+  let symbolSeed = 0;
+  for (let i = 0; i < symbol.length; i++) {
+    symbolSeed = (symbolSeed * 31 + symbol.charCodeAt(i)) >>> 0;
+  }
   const seedMap: Record<Timeframe, number> = {
     M1: 1,
     M5: 5,
@@ -932,7 +1020,7 @@ function generateDemoCandles(
     D1: 1440,
     W: 10080,
   };
-  const seed = seedMap[timeframe];
+  const seed = seedMap[timeframe] + symbolSeed;
   const baseTime = Math.floor(Date.now() / 1000);
   // Time delta per timeframe (in seconds)
   const deltaMap: Record<Timeframe, number> = {
@@ -947,16 +1035,27 @@ function generateDemoCandles(
   };
   const delta = deltaMap[timeframe];
 
-  let price = 1.16750;
+  // Volatility scales relative to price — bigger for crypto (BTC, ETH…),
+  // tiny for forex majors. Use 0.25% by default.
+  const isCrypto =
+    symbol.startsWith("BTC") ||
+    symbol.startsWith("ETH") ||
+    symbol.startsWith("SOL") ||
+    symbol.startsWith("XRP");
+  const volPct = isCrypto ? 0.01 : 0.0025;
+  const moveScale = midPrice * volPct;
+  const wickScale = moveScale * 0.5;
+
+  let price = midPrice;
   const out: CandlestickData<UTCTimestamp>[] = [];
   for (let i = 0; i < count; i++) {
     const s = (seed + i) * 9301 + 49297;
     const rnd = ((s % 233280) / 233280) * 2 - 1; // -1..1
     const open = price;
-    const move = rnd * 0.0003;
+    const move = rnd * moveScale;
     const close = open + move;
-    const high = Math.max(open, close) + Math.abs(rnd) * 0.00015;
-    const low = Math.min(open, close) - Math.abs(rnd) * 0.00015;
+    const high = Math.max(open, close) + Math.abs(rnd) * wickScale;
+    const low = Math.min(open, close) - Math.abs(rnd) * wickScale;
     out.push({
       time: (baseTime - (count - i - 1) * delta) as UTCTimestamp,
       open,
@@ -970,75 +1069,141 @@ function generateDemoCandles(
 }
 
 /* ------------------------------------------------------------------ */
-/* Bottom trading strip                                                 */
+/* Bottom trading panel (strip + expandable tables + close popup)       */
 /* ------------------------------------------------------------------ */
 
-function BottomStrip() {
+function BottomPanel({
+  expanded,
+  onToggleExpand,
+  onPendingPriceChange,
+}: {
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onPendingPriceChange: (price: number | null) => void;
+}) {
   const [tab, setTab] = useState<"market" | "pending" | "closed">("market");
+  const [closePopupOpen, setClosePopupOpen] = useState(false);
+  const positions = useMarketsStore((s) => s.positions);
+  const pendingOrders = useMarketsStore((s) => s.pendingOrders);
+  const closedPositions = useMarketsStore((s) => s.closedPositions);
+  const account = useMarketsStore((s) => s.account);
+
+  const floating = account?.floatingPnl ?? 0;
+  const floatingColor = floating > 0 ? C_UP : floating < 0 ? C_DOWN : "#ffffff";
 
   return (
     <div
-      className="flex h-9 shrink-0 items-center gap-2 border-t px-3 themed"
-      style={{
-        background: C_PANEL,
-        borderColor: C_BORDER,
-      }}
+      className="shrink-0 border-t themed"
+      style={{ background: C_PANEL, borderColor: C_BORDER }}
     >
-      {/* Tabs — left side */}
-      <StripTab
-        label="Market"
-        count={0}
-        active={tab === "market"}
-        onClick={() => setTab("market")}
-      />
-      <StripTab
-        label="Pending"
-        count={0}
-        active={tab === "pending"}
-        onClick={() => setTab("pending")}
-      />
-      <StripTab
-        label="Closed"
-        active={tab === "closed"}
-        onClick={() => setTab("closed")}
-      />
+      {/* ── Strip row ── */}
+      <div className="flex h-9 items-center gap-2 px-3">
+        <StripTab
+          label="Market"
+          count={positions.length}
+          active={tab === "market" && expanded}
+          onClick={() => {
+            setTab("market");
+            if (!expanded) onToggleExpand();
+          }}
+        />
+        <StripTab
+          label="Pending"
+          count={pendingOrders.length}
+          active={tab === "pending" && expanded}
+          onClick={() => {
+            setTab("pending");
+            if (!expanded) onToggleExpand();
+          }}
+        />
+        <StripTab
+          label="Closed"
+          count={closedPositions.length}
+          active={tab === "closed" && expanded}
+          onClick={() => {
+            setTab("closed");
+            if (!expanded) onToggleExpand();
+          }}
+        />
 
-      {/* Spacer */}
-      <div className="flex-1" />
+        {/* Spacer */}
+        <div className="flex-1" />
 
-      {/* Right side — floating profit + close */}
-      <div className="flex items-center gap-2 text-[11px]">
-        <span className="text-[#787b86]">Floating profit:</span>
-        <span className="font-mono tabular-nums text-white">$0.00</span>
+        {/* Floating profit + close */}
+        <div className="flex items-center gap-2 text-[11px]">
+          <span className="text-[#787b86]">Floating profit:</span>
+          <span
+            className="font-mono tabular-nums"
+            style={{ color: floatingColor }}
+          >
+            ${floating.toFixed(2)}
+          </span>
+        </div>
+
+        <Separator />
+
+        {/* Close button — opens the close-positions popup */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setClosePopupOpen((v) => !v)}
+            className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-white transition-colors hover:opacity-90"
+            style={{ background: "#2a2e39" }}
+          >
+            Close
+            <ChevronDown className="h-3 w-3" />
+          </button>
+          {closePopupOpen && (
+            <ClosePositionsPopup
+              onClose={() => setClosePopupOpen(false)}
+            />
+          )}
+        </div>
+
+        {/* Expand/collapse toggle */}
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          title={expanded ? "Collapse" : "Expand"}
+          aria-label={expanded ? "Collapse" : "Expand"}
+          className="flex h-6 w-6 items-center justify-center rounded text-[#787b86] transition-colors hover:bg-[#2a2e39] hover:text-white"
+        >
+          {expanded ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronUp className="h-3.5 w-3.5" />
+          )}
+        </button>
+        <button
+          type="button"
+          title="Maximize"
+          aria-label="Maximize"
+          className="flex h-6 w-6 items-center justify-center rounded text-[#787b86] transition-colors hover:bg-[#2a2e39] hover:text-white"
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
+        </button>
       </div>
 
-      <Separator />
-
-      <button
-        type="button"
-        className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-white transition-colors hover:opacity-90"
-        style={{ background: "#2a2e39" }}
-      >
-        Close
-        <ChevronDown className="h-3 w-3" />
-      </button>
-
-      <button
-        type="button"
-        title="Minimize"
-        aria-label="Minimize"
-        className="flex h-6 w-6 items-center justify-center rounded text-[#787b86] transition-colors hover:bg-[#2a2e39] hover:text-white"
-      >
-        <MinusCircle className="h-3.5 w-3.5" />
-      </button>
-      <button
-        type="button"
-        title="Maximize"
-        aria-label="Maximize"
-        className="flex h-6 w-6 items-center justify-center rounded text-[#787b86] transition-colors hover:bg-[#2a2e39] hover:text-white"
-      >
-        <Maximize2 className="h-3.5 w-3.5" />
-      </button>
+      {/* ── Expanded table area ── */}
+      {expanded && (
+        <div
+          className="h-[220px] overflow-auto border-t themed"
+          style={{ borderColor: C_BORDER, background: "#161922" }}
+        >
+          {tab === "market" && (
+            <PositionsTable positions={positions} />
+          )}
+          {tab === "pending" && (
+            <PendingOrdersTable
+              orders={pendingOrders}
+              onPendingPriceChange={onPendingPriceChange}
+            />
+          )}
+          {tab === "closed" && (
+            <ClosedTable closed={closedPositions} />
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1080,4 +1245,319 @@ function StripTab({
       )}
     </button>
   );
+}
+
+/* ── Close-positions popup ── */
+
+function ClosePositionsPopup({ onClose }: { onClose: () => void }) {
+  const [choice, setChoice] = useState<
+    "all" | "profitable" | "losing" | "long" | "short"
+  >("all");
+  const closeMatching = useMarketsStore((s) => s.closeMatching);
+  const positions = useMarketsStore((s) => s.positions);
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (!e.composedPath().includes(rootRef.current)) onClose();
+    };
+    const id = window.setTimeout(() => {
+      document.addEventListener("mousedown", handler);
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("mousedown", handler);
+    };
+  }, [onClose]);
+
+  const handleConfirm = () => {
+    closeMatching(choice);
+    onClose();
+  };
+
+  const options: { id: typeof choice; label: string }[] = [
+    { id: "all", label: "All currently open" },
+    { id: "profitable", label: "All profitable" },
+    { id: "losing", label: "All losing" },
+    { id: "long", label: "All long" },
+    { id: "short", label: "All short" },
+  ];
+
+  return (
+    <div
+      ref={rootRef}
+      className="absolute bottom-9 right-0 z-30 w-[280px] overflow-hidden rounded-md shadow-xl themed"
+      style={{
+        background: "#1e1e2d",
+        border: "1px solid #2a2a3c",
+        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.5)",
+      }}
+    >
+      <div className="px-4 pb-2 pt-3 text-[12px] text-white">
+        Which positions would you like
+        <br />
+        to close at market prices?
+      </div>
+      <div className="px-2 pb-2">
+        {options.map((opt) => (
+          <label
+            key={opt.id}
+            className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-[12px] text-[#e0e0e0] hover:bg-[#2a2a3c] rounded"
+          >
+            <input
+              type="radio"
+              name="close-choice"
+              checked={choice === opt.id}
+              onChange={() => setChoice(opt.id)}
+              className="h-3 w-3 accent-[#4b9eff]"
+            />
+            {opt.label}
+          </label>
+        ))}
+      </div>
+      <div className="flex gap-2 border-t px-3 py-2" style={{ borderColor: "#2e2e3e" }}>
+        <button
+          type="button"
+          onClick={handleConfirm}
+          disabled={positions.length === 0}
+          className="flex-1 rounded bg-[#2962ff] px-3 py-1.5 text-[11px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          Confirm
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex-1 rounded bg-[#2a2e39] px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-[#363a45]"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Trading tables ── */
+
+function PositionsTable({ positions }: { positions: ReturnType<typeof useMarketsStore.getState>["positions"] }) {
+  if (positions.length === 0) {
+    return (
+      <div className="px-4 py-8 text-center text-[11px] text-[#787b86]">
+        No open positions. Place an order from the Order Details panel.
+      </div>
+    );
+  }
+  return (
+    <table className="w-full text-[11px] text-[#d1d4dc]">
+      <thead className="text-[10px] uppercase text-[#787b86] sticky top-0 bg-[#161922]">
+        <tr>
+          <Th>Instrument</Th>
+          <Th>Direction</Th>
+          <Th>Volume</Th>
+          <Th>Open time</Th>
+          <Th>Open price</Th>
+          <Th>Current price</Th>
+          <Th>Price change</Th>
+          <Th>P/L</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {positions.map((p) => (
+          <tr key={p.id} className="border-t border-[#2a2e39]">
+            <Td className="font-semibold text-white">{p.symbol}</Td>
+            <Td>
+              <span
+                className="rounded px-1.5 py-0.5 text-[9px] font-bold text-white"
+                style={{ background: p.side === "buy" ? C_UP : C_DOWN }}
+              >
+                {p.side === "buy" ? "Buy" : "Sell"}
+              </span>
+            </Td>
+            <Td className="font-mono tabular-nums">{p.quantity.toFixed(2)}</Td>
+            <Td className="font-mono tabular-nums">{new Date(p.openedAt).toLocaleString()}</Td>
+            <Td className="font-mono tabular-nums">{p.entryPrice.toFixed(5)}</Td>
+            <Td className="font-mono tabular-nums">{p.entryPrice.toFixed(5)}</Td>
+            <Td className="font-mono tabular-nums">0.00%</Td>
+            <Td>
+              <span
+                className="font-mono tabular-nums"
+                style={{
+                  color:
+                    p.unrealizedPnl > 0 ? C_UP : p.unrealizedPnl < 0 ? C_DOWN : "#fff",
+                }}
+              >
+                ${p.unrealizedPnl.toFixed(2)}
+              </span>
+            </Td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function PendingOrdersTable({
+  orders,
+  onPendingPriceChange,
+}: {
+  orders: ReturnType<typeof useMarketsStore.getState>["pendingOrders"];
+  onPendingPriceChange: (price: number | null) => void;
+}) {
+  // When the pending tab is shown, propagate the first pending order's
+  // entry price to the chart so the pending-order line shows.
+  useEffect(() => {
+    if (orders.length > 0) {
+      onPendingPriceChange(orders[0].price);
+    } else {
+      onPendingPriceChange(null);
+    }
+    return () => onPendingPriceChange(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders.length, orders[0]?.price]);
+
+  if (orders.length === 0) {
+    return (
+      <div className="px-4 py-8 text-center text-[11px] text-[#787b86]">
+        No pending orders. Configure one from the Order Details → Pending tab.
+      </div>
+    );
+  }
+  return (
+    <table className="w-full text-[11px] text-[#d1d4dc]">
+      <thead className="text-[10px] uppercase text-[#787b86] sticky top-0 bg-[#161922]">
+        <tr>
+          <Th>Instrument</Th>
+          <Th>Type</Th>
+          <Th>Direction</Th>
+          <Th>Entry price</Th>
+          <Th>Volume</Th>
+          <Th>Created</Th>
+          <Th>SL</Th>
+          <Th>TP</Th>
+          <Th></Th>
+        </tr>
+      </thead>
+      <tbody>
+        {orders.map((o) => (
+          <tr key={o.id} className="border-t border-[#2a2e39]">
+            <Td className="font-semibold text-white">{o.symbol}</Td>
+            <Td className="capitalize">{o.type}</Td>
+            <Td>
+              <span
+                className="rounded px-1.5 py-0.5 text-[9px] font-bold text-white"
+                style={{ background: o.side === "buy" ? C_UP : C_DOWN }}
+              >
+                {o.side === "buy" ? "Buy" : "Sell"}
+              </span>
+            </Td>
+            <Td className="font-mono tabular-nums">{o.price.toFixed(5)}</Td>
+            <Td className="font-mono tabular-nums">{o.quantity.toFixed(2)}</Td>
+            <Td className="font-mono tabular-nums">{new Date(o.createdAt).toLocaleString()}</Td>
+            <Td className="font-mono tabular-nums">{o.stopLoss || "—"}</Td>
+            <Td className="font-mono tabular-nums">{o.takeProfit || "—"}</Td>
+            <Td>
+              <button
+                type="button"
+                onClick={() => useMarketsStore.getState().cancelPending(o.id)}
+                className="text-[10px] text-[#787b86] hover:text-white"
+              >
+                Cancel
+              </button>
+            </Td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function ClosedTable({ closed }: { closed: ReturnType<typeof useMarketsStore.getState>["closedPositions"] }) {
+  if (closed.length === 0) {
+    return (
+      <div className="px-4 py-8 text-center text-[11px] text-[#787b86]">
+        No closed positions yet.
+      </div>
+    );
+  }
+
+  // Group closed positions by date for the history layout.
+  const groups = new Map<string, typeof closed>();
+  for (const c of closed) {
+    const key = new Date(c.closedAt).toLocaleDateString();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(c);
+  }
+
+  return (
+    <div className="text-[11px] text-[#d1d4dc]">
+      {Array.from(groups.entries()).map(([date, items]) => (
+        <div key={date}>
+          <div className="sticky top-0 bg-[#1e222d] px-3 py-1 text-[10px] font-bold uppercase text-[#787b86]">
+            {date}
+          </div>
+          <table className="w-full">
+            <thead className="text-[10px] uppercase text-[#787b86]">
+              <tr>
+                <Th>Instrument</Th>
+                <Th>Direction</Th>
+                <Th>Volume</Th>
+                <Th>Close time</Th>
+                <Th>Close price</Th>
+                <Th>Price change</Th>
+                <Th>P/L</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((c) => (
+                <tr key={c.id} className="border-t border-[#2a2e39]">
+                  <Td className="font-semibold text-white">{c.symbol}</Td>
+                  <Td>
+                    <span
+                      className="rounded px-1.5 py-0.5 text-[9px] font-bold text-white"
+                      style={{ background: c.side === "buy" ? C_UP : C_DOWN }}
+                    >
+                      {c.side === "buy" ? "Buy" : "Sell"}
+                    </span>
+                  </Td>
+                  <Td className="font-mono tabular-nums">{c.quantity.toFixed(2)}</Td>
+                  <Td className="font-mono tabular-nums">
+                    {new Date(c.closedAt).toLocaleTimeString()}
+                  </Td>
+                  <Td className="font-mono tabular-nums">{c.exitPrice.toFixed(5)}</Td>
+                  <Td className="font-mono tabular-nums">
+                    {((c.exitPrice - c.entryPrice) / c.entryPrice * 100).toFixed(2)}%
+                  </Td>
+                  <Td>
+                    <span
+                      className="font-mono tabular-nums"
+                      style={{
+                        color:
+                          c.realizedPnl > 0 ? C_UP : c.realizedPnl < 0 ? C_DOWN : "#fff",
+                      }}
+                    >
+                      ${c.realizedPnl.toFixed(2)}
+                    </span>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Th({ children }: { children?: React.ReactNode }) {
+  return <th className="px-3 py-1.5 text-left font-medium">{children}</th>;
+}
+
+function Td({
+  children,
+  className,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  return <td className={cn("px-3 py-1.5", className)}>{children}</td>;
 }

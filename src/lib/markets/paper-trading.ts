@@ -292,6 +292,91 @@ export function getClosedPositions(): ClosedPosition[] {
   return loadData().closedPositions;
 }
 
+export function getPendingOrders(): PendingOrder[] {
+  return loadData().pendingOrders;
+}
+
+/** Cancel a pending order by its ID. Returns true if removed. */
+export function cancelPendingOrder(orderId: string): boolean {
+  const data = loadData();
+  const idx = data.pendingOrders.findIndex((o) => o.id === orderId);
+  if (idx < 0) return false;
+  data.pendingOrders.splice(idx, 1);
+  saveData(data);
+  return true;
+}
+
+/** Place a new pending order. Risk rules are checked against equity. */
+export function placePendingOrder(
+  symbol: string,
+  side: OrderSide,
+  type: PendingOrder["type"],
+  price: number,
+  quantity: number,
+  stopLoss: number = 0,
+  takeProfit: number = 0,
+  riskRules?: RiskRules,
+): { success: boolean; order?: PendingOrder; error?: string } {
+  const data = loadData();
+  if (riskRules) {
+    const equity = data.balance + data.positions.reduce((s, p) => s + p.unrealizedPnl, 0);
+    const riskCheck = checkRisk({
+      side,
+      entryPrice: price,
+      quantity,
+      stopLoss,
+      equity,
+      positions: data.positions,
+      riskRules,
+      dailyLossAmount: data.dailyLossAmount,
+      weeklyLossAmount: data.weeklyLossAmount,
+      consecutiveLosses: data.consecutiveLosses,
+      lastLossAt: data.lastLossAt,
+      symbol,
+    });
+    if (!riskCheck.passed) {
+      return { success: false, error: riskCheck.reason };
+    }
+  }
+  const order: PendingOrder = {
+    id: `pnd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    symbol,
+    side,
+    type,
+    price,
+    quantity,
+    stopLoss,
+    takeProfit,
+    createdAt: Date.now(),
+  };
+  data.pendingOrders.push(order);
+  saveData(data);
+  return { success: true, order };
+}
+
+/** Close a list of positions by id at given exit prices (Map by symbol).
+    Returns the number actually closed. */
+export function closePositionsByIds(
+  positionIds: string[],
+  exitPriceBySymbol: Map<string, number>,
+): { closed: number; realizedPnl: number } {
+  let closed = 0;
+  let totalPnl = 0;
+  // Re-load after each close to keep the array indices fresh.
+  for (const id of positionIds) {
+    const pos = loadData().positions.find((p) => p.id === id);
+    if (!pos) continue;
+    const exit = exitPriceBySymbol.get(pos.symbol);
+    if (exit === undefined) continue;
+    const result = closePosition(id, exit);
+    if (result.success && result.closed) {
+      closed += 1;
+      totalPnl += result.closed.realizedPnl;
+    }
+  }
+  return { closed: closed, realizedPnl: totalPnl };
+}
+
 export function resetPaperAccount(): void {
   saveData(defaultData());
 }
