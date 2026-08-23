@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo } from "react";
 import {
   BarChart3,
   ArrowDownToLine,
@@ -12,137 +12,250 @@ import {
 } from "lucide-react";
 import { BrandMark } from "@/components/branding/BrandMark";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/components/theme/ThemeProvider";
+import type { ThemeId } from "@/lib/themes";
+
+/* ------------------------------------------------------------------ */
+/* Theme-aware tokens                                                  */
+/* ------------------------------------------------------------------ */
+/* Markets uses the global LUCIAN theme system (data-theme on <html>).
+   These tokens map the global CSS variables to local classnames so the
+   Markets page re-themes together with the rest of the workspace. */
+
+const SURFACE_RAIL = "themed bg-surface border-r border-line-muted";
+const SURFACE_TOP = "themed bg-surface border-b border-line-muted";
+const SURFACE_ACCT = "themed bg-surface border-b border-line-muted";
+const INACTIVE = "text-fg-faint hover:bg-hover hover:text-fg";
+const ACTIVE = "bg-active text-fg";
+const RAIL_SEPARATOR = "border-b border-line-muted/60";
+const TOPBAR_LABEL = "text-fg-muted";
+const TOPBAR_VALUE = "text-fg";
+const TOGGLE_BASE = "text-fg-faint hover:bg-hover hover:text-fg themed";
+
+/* ------------------------------------------------------------------ */
+/* Component                                                           */
+/* ------------------------------------------------------------------ */
 
 export function MarketsFrame() {
-  const [dark, setDark] = useState(true);
+  const { theme, setTheme } = useTheme();
+
+  const isLight = useMemo(() => {
+    return (
+      theme === "natural-white" ||
+      theme === "creamy-light"
+    );
+  }, [theme]);
+
+  const toggleTheme = () => {
+    /* Toggle between the default dark theme and the default light theme.
+       This keeps Markets consistent with the rest of LUCIAN — the same
+       data-theme attribute that drives the workspace chrome also drives
+       Markets. */
+    const next: ThemeId = isLight ? "midnight-gray" : "natural-white";
+    setTheme(next);
+  };
 
   return (
-    <div className="flex h-full bg-[#13161c] text-white">
-      {/* ── LEFT VERTICAL RAIL (54px) ── */}
-      <div className="flex w-[54px] shrink-0 flex-col items-center border-r border-[#2b2b3d] bg-[#1e1e2d] py-3">
-        {/* LUCIAN logo at top (replaces PO circle) */}
-        <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-full border border-[#3a3a4f] bg-[#252535]">
-          <BrandMark size={22} />
+    <div className="themed flex h-full bg-canvas text-fg">
+      {/* ── LEFT VERTICAL RAIL (88px) ── */}
+      <div
+        className={cn(
+          "flex w-[88px] shrink-0 flex-col items-center py-3",
+          SURFACE_RAIL,
+        )}
+      >
+        {/* LUCIAN logo at top */}
+        <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-full border border-line-muted bg-surface-2">
+          <BrandMark size={24} />
         </div>
 
-        {/* Instruments (active) */}
+        {/* Thin separator under logo */}
+        <div className="mb-2 h-px w-12 bg-line-muted/60" />
+
+        {/* Tools: icon → label → separator */}
         <RailBtn icon={BarChart3} label="Instruments" active />
-
-        {/* Deposit */}
         <RailBtn icon={ArrowDownToLine} label="Deposit" />
-
-        {/* Withdraw */}
         <RailBtn icon={ArrowUpFromLine} label="Withdraw" />
-
-        {/* Transfer */}
         <RailBtn icon={ArrowLeftRight} label="Transfer" />
+        <RailBtn icon={History} label="Operation History" twoLine />
 
-        {/* Operation History */}
-        <RailBtn icon={History} label="Operation History" />
-
-        {/* Spacer */}
+        {/* Spacer pushes the toggle to the bottom */}
         <div className="flex-1" />
 
-        {/* Light / Dark toggle at very bottom */}
+        {/* Light / Dark toggle — uses the real LUCIAN theme system */}
         <button
-          title={dark ? "Switch to Light" : "Switch to Dark"}
-          onClick={() => setDark((d) => !d)}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-[#6b7280] transition-colors hover:bg-[#252535] hover:text-white"
+          type="button"
+          title={isLight ? "Switch to Dark" : "Switch to Light"}
+          aria-label={isLight ? "Switch to Dark" : "Switch to Light"}
+          onClick={toggleTheme}
+          className={cn(
+            "flex h-9 w-9 items-center justify-center rounded-md transition-colors",
+            TOGGLE_BASE,
+          )}
         >
-          {dark ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
+          {isLight ? (
+            <Moon className="h-[18px] w-[18px]" />
+          ) : (
+            <Sun className="h-[18px] w-[18px]" />
+          )}
         </button>
       </div>
 
       {/* ── RIGHT SIDE: strips + blank ── */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* ── THIN TOP STRIP (32px) ── */}
-        <div className="flex h-8 shrink-0 items-center border-b border-[#2a2a3c] bg-[#161622] px-4">
-          <span className="animate-pulse text-[11px] font-semibold tracking-wide text-[#3b82f6]">
+        <div
+          className={cn(
+            "flex h-8 shrink-0 items-center px-4",
+            SURFACE_TOP,
+          )}
+        >
+          <span className="animate-pulse text-[11px] font-semibold tracking-wide text-[var(--accent)]">
             LUCIAN Markets
           </span>
         </div>
 
         {/* ── ACCOUNT METRICS STRIP (48px) ── */}
-        <div className="flex h-12 shrink-0 items-center gap-5 border-b border-[#2a2a3c] bg-[#161622] px-4">
-          {/* LUCIAN Markets logo text at far left */}
-          <span className="mr-2 text-[13px] font-bold text-white">LUCIAN</span>
+        <div
+          className={cn(
+            "flex h-12 shrink-0 items-center px-4",
+            SURFACE_ACCT,
+          )}
+        >
+          {/* LUCIAN brand wordmark at far left — large empty area after it */}
+          <span className="mr-2 text-[13px] font-bold text-fg">LUCIAN</span>
 
-          {/* Metrics — exact screenshot order */}
-          <Metric label="Margin" value="$0.00" />
-          <Metric label="Free margin" value="$0.00" />
-          <Metric label="Margin level" value="0.00%" />
-          <Metric label="Equity" value="$0.00" />
+          {/* Push account-information group toward the right, near Deposit */}
+          <div className="ml-auto flex items-center gap-4">
+            {/* ── Account metrics in screenshot order ── */}
+            <Metric label="Margin" value="$0.00" />
+            <Metric label="Free margin" value="$0.00" />
+            <Metric label="Margin level" value="0.00%" />
+            <Metric label="Equity" value="$0.00" />
+            <Metric label="Floating profit" value="$0.00" />
 
-          {/* Separator */}
-          <div className="h-5 w-px bg-[#333]" />
+            {/* Separator between numeric metrics and Virtual/Real */}
+            <div className="h-5 w-px bg-line-muted" />
 
-          {/* Virtual (green accent) — replaces Bonuses */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-[#8b8ba3]">Virtual</span>
-            <span className="font-mono text-[12px] tabular-nums text-white">$0.00</span>
-            <span className="rounded bg-[#10b981] px-2 py-0.5 text-[9px] font-bold text-white">
-              Virtual
-            </span>
+            {/* Virtual — single, label-over-value, green accent */}
+            <AccountPill label="Virtual" value="$0.00" accent="green" />
+
+            {/* Real — single, label-over-value, blue accent */}
+            <AccountPill label="Real" value="$0.00" accent="blue" />
+
+            {/* Deposit button — far right, stays where it is */}
+            <button
+              type="button"
+              className="rounded-[6px] bg-[var(--accent)] px-5 py-1.5 text-[12px] font-semibold text-[var(--accent-fg)] shadow-sm transition-colors hover:bg-[var(--accent-hover)] themed"
+            >
+              Deposit
+            </button>
           </div>
-
-          {/* Floating profit */}
-          <Metric label="Floating profit" value="$0.00" />
-
-          {/* Real (blue accent) */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-[#8b8ba3]">Real</span>
-            <span className="font-mono text-[12px] tabular-nums text-white">$0.00</span>
-            <span className="rounded bg-[#2563eb] px-2 py-0.5 text-[9px] font-bold text-white">
-              Real
-            </span>
-          </div>
-
-          {/* Deposit button — far right */}
-          <button
-            className="ml-auto rounded-[6px] bg-[#2563eb] px-6 py-2 text-[13px] font-semibold text-white shadow-sm transition-colors hover:bg-[#3b82f6]"
-          >
-            Deposit
-          </button>
         </div>
 
         {/* Blank markets area */}
-        <div className="min-h-0 flex-1" />
+        <div className="min-h-0 flex-1 bg-canvas themed" />
       </div>
     </div>
   );
 }
 
-/* ── Sub-components ── */
+/* ------------------------------------------------------------------ */
+/* Sub-components                                                      */
+/* ------------------------------------------------------------------ */
 
 function RailBtn({
   icon: Icon,
   label,
   active = false,
+  twoLine = false,
 }: {
   icon: typeof BarChart3;
   label: string;
   active?: boolean;
+  twoLine?: boolean;
 }) {
+  const parts = twoLine ? splitTwoLine(label) : [label];
   return (
-    <button
-      title={label}
-      className={cn(
-        "mb-1 flex h-9 w-9 items-center justify-center rounded-md transition-colors",
-        active
-          ? "bg-[#252535] text-white"
-          : "text-[#6b7280] hover:bg-[#252535] hover:text-white",
-      )}
-    >
-      <Icon className="h-[18px] w-[18px]" />
-    </button>
+    <div className="flex w-full flex-col items-center">
+      <button
+        type="button"
+        title={label}
+        className={cn(
+          "flex h-9 w-12 flex-col items-center justify-center rounded-md transition-colors themed",
+          active ? ACTIVE : INACTIVE,
+        )}
+      >
+        <Icon className="h-[18px] w-[18px]" />
+        <span className="mt-0.5 text-[9px] font-medium leading-tight tracking-tight">
+          {parts.map((p, i) => (
+            <span key={i} className="block text-center">
+              {p}
+            </span>
+          ))}
+        </span>
+      </button>
+      {/* Thin horizontal separator under each tool item */}
+      <div className={cn("mt-1.5 h-px w-10", RAIL_SEPARATOR)} />
+    </div>
   );
+}
+
+function splitTwoLine(label: string): string[] {
+  /* Breaks a two-word label like "Operation History" into two lines:
+     "Operation" / "History" */
+  const idx = label.lastIndexOf(" ");
+  if (idx < 0) return [label];
+  return [label.slice(0, idx), label.slice(idx + 1)];
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[10px] text-[#8b8ba3]">{label}</span>
-      <span className="font-mono text-[12px] tabular-nums text-white">{value}</span>
+    <div className="flex shrink-0 items-center gap-1.5">
+      <span className={cn("text-[10px]", TOPBAR_LABEL)}>{label}</span>
+      <span
+        className={cn(
+          "font-mono text-[12px] tabular-nums font-medium",
+          TOPBAR_VALUE,
+        )}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function AccountPill({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent: "green" | "blue";
+}) {
+  /* Single, vertical label-over-value display.
+     Green accent = Virtual, Blue accent = Real.
+     The accent shows as a small colored dot to the left of the label,
+     keeping the typography clean and consistent. */
+  const dot =
+    accent === "green" ? "bg-[#10b981]" : "bg-[#3b82f6]";
+  return (
+    <div className="flex shrink-0 flex-col items-start leading-tight">
+      <div className="flex items-center gap-1.5">
+        <span className={cn("h-1.5 w-1.5 rounded-full", dot)} />
+        <span className={cn("text-[10px] font-medium", TOPBAR_LABEL)}>
+          {label}
+        </span>
+      </div>
+      <span
+        className={cn(
+          "ml-3 font-mono text-[12px] tabular-nums font-medium",
+          TOPBAR_VALUE,
+        )}
+      >
+        {value}
+      </span>
     </div>
   );
 }
