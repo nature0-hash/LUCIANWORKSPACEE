@@ -29,7 +29,7 @@
  *  - X close button calls onClose prop
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Search, Star, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -37,49 +37,7 @@ import {
   type InstrumentCategory,
 } from "@/lib/markets/catalog";
 import { InstrumentIcon } from "@/components/markets/instrument-icon";
-
-const FAVORITES_KEY = "lucian-markets-favorites";
-
-/** Hook: load + persist favorites as a Set<string> of symbols. */
-function useFavorites() {
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
-
-  // Load on mount (client-only).
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(FAVORITES_KEY);
-      if (raw) {
-        const arr = JSON.parse(raw) as string[];
-        setFavorites(new Set(arr));
-      }
-    } catch {
-      /* storage unavailable */
-    }
-  }, []);
-
-  const persist = useCallback((next: Set<string>) => {
-    try {
-      localStorage.setItem(FAVORITES_KEY, JSON.stringify([...next]));
-    } catch {
-      /* storage unavailable */
-    }
-  }, []);
-
-  const toggle = useCallback(
-    (symbol: string) => {
-      setFavorites((prev) => {
-        const next = new Set(prev);
-        if (next.has(symbol)) next.delete(symbol);
-        else next.add(symbol);
-        persist(next);
-        return next;
-      });
-    },
-    [persist],
-  );
-
-  return { favorites, toggle };
-}
+import { useFavorites } from "@/hooks/use-favorites";
 
 /* Filter chips arranged in two clean rows, matching the reference:
    Row 1: ★ All Forex Crypto Indices

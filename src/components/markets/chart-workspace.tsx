@@ -42,11 +42,7 @@ import {
 } from "lightweight-charts";
 import {
   Star,
-  Bell,
-  Info,
-  Clock,
   Settings,
-  Crosshair,
   Minus,
   Plus,
   ChevronDown,
@@ -63,10 +59,16 @@ import {
   Columns3,
   Grid2x2,
   Square,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMarketsStore } from "@/store/markets";
-import { getInstrumentBySymbol } from "@/lib/markets/catalog";
+import {
+  getInstrumentBySymbol,
+  INSTRUMENT_CATALOG,
+} from "@/lib/markets/catalog";
+import { InstrumentIcon } from "@/components/markets/instrument-icon";
+import { useFavorites } from "@/hooks/use-favorites";
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
@@ -228,45 +230,47 @@ export function ChartWorkspace({
 }: {
   pendingOrderPriceOverride?: number | null;
 }) {
-  const [timeframe, setTimeframe] = useState<Timeframe>("M1");
-  const [selectedTool, setSelectedTool] = useState<string>("rect");
   const { settings, update } = useChartSettings();
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [bottomExpanded, setBottomExpanded] = useState(false);
   const [internalPendingPrice, setInternalPendingPrice] = useState<number | null>(null);
   // Chart layout — controls how many chart panes are visible.
   const [chartLayout, setChartLayout] = useState<ChartLayout>("single");
   const [layoutPopupOpen, setLayoutPopupOpen] = useState(false);
-  // The pending-order chart line takes its price from EITHER the lifted
-  // override (from OrderDetails panel) OR the bottom panel's pending tab,
-  // whichever was last set. The override takes priority when defined.
+
+  // ── Per-pane state ──
+  // Each chart pane has its own selected symbol + timeframe.
+  // The array is resized when chartLayout changes.
+  const defaultPanes: PaneState[] = [
+    { symbol: "EURUSD", timeframe: "M1" },
+    { symbol: "BTCUSD", timeframe: "M1" },
+    { symbol: "XAUUSD", timeframe: "M1" },
+    { symbol: "ETHUSD", timeframe: "M1" },
+  ];
+  const [paneStates, setPaneStates] = useState<PaneState[]>([defaultPanes[0]]);
+
+  // Resize paneStates when chartLayout changes.
+  useEffect(() => {
+    const count = PANE_COUNT[chartLayout];
+    setPaneStates((prev) => {
+      const next = [...prev];
+      while (next.length < count) {
+        next.push(defaultPanes[next.length] ?? defaultPanes[0]);
+      }
+      next.length = count;
+      return next;
+    });
+  }, [chartLayout]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const pendingOrderPrice =
     pendingOrderPriceOverride !== undefined
       ? pendingOrderPriceOverride
       : internalPendingPrice;
 
-  // ── Selected instrument comes from the shared markets store ──
-  const selectedSymbol = useMarketsStore((s) => s.selectedSymbol);
-  const onToggleInstruments = useMarketsStore((s) => s.onToggleInstruments ?? (() => {}));
-  const instrument = useMemo(
-    () => (selectedSymbol ? getInstrumentBySymbol(selectedSymbol) : null),
-    [selectedSymbol],
-  );
-
-  // Use the catalog's bid/ask/changePct for the selected instrument.
-  // Falls back to EURUSD defaults when no selection yet.
-  const fallback = getInstrumentBySymbol("EURUSD");
-  const inst = instrument ?? fallback;
-  const SELL_PRICE = inst?.bid ?? 1.16744;
-  const BUY_PRICE = inst?.ask ?? 1.16796;
-  const CHANGE_PCT = inst?.changePct ?? 0;
-  const SYMBOL = inst?.symbol ?? "EURUSD";
-
   const handleSave = useCallback(() => {
     const ok = saveChartConfig({
-      symbol: SYMBOL,
-      timeframe,
+      symbol: paneStates[0]?.symbol ?? "EURUSD",
+      timeframe: paneStates[0]?.timeframe ?? "M1",
       showBid: settings.showBid,
       showAsk: settings.showAsk,
       showMarketOrders: settings.showMarketOrders,
@@ -275,7 +279,7 @@ export function ChartWorkspace({
     });
     setSaveMessage(ok ? "Chart saved" : "Save failed");
     setTimeout(() => setSaveMessage(null), 1800);
-  }, [timeframe, settings, SYMBOL]);
+  }, [settings, paneStates]);
 
   const handleLoad = useCallback(() => {
     const cfg = loadChartConfig();
@@ -284,7 +288,13 @@ export function ChartWorkspace({
       setTimeout(() => setSaveMessage(null), 1800);
       return;
     }
-    setTimeframe(cfg.timeframe);
+    setPaneStates((prev) => {
+      const next = [...prev];
+      if (next[0]) {
+        next[0] = { symbol: cfg.symbol, timeframe: cfg.timeframe };
+      }
+      return next;
+    });
     update({
       showBid: cfg.showBid,
       showAsk: cfg.showAsk,
@@ -297,72 +307,53 @@ export function ChartWorkspace({
 
   return (
     <div className="themed flex h-full min-w-0 flex-1 flex-col bg-canvas">
-      {/* ── Top chart toolbar ── */}
-      <ChartToolbar
-        symbol={SYMBOL}
-        changePct={CHANGE_PCT}
-        timeframe={timeframe}
-        onTimeframe={setTimeframe}
-        settingsOpen={settingsOpen}
-        onToggleSettings={() => setSettingsOpen((v) => !v)}
-        onToggleInstruments={onToggleInstruments}
-        onNewOrder={() => useMarketsStore.getState().setLeftPanelMode("order")}
-        layoutPopupOpen={layoutPopupOpen}
-        onToggleLayoutPopup={() => setLayoutPopupOpen((v) => !v)}
-        chartLayout={chartLayout}
-        onSelectLayout={(l) => {
-          setChartLayout(l);
-          setLayoutPopupOpen(false);
-        }}
-      />
-
-      {/* ── Body: drawing rail + chart panes + overlays ── */}
+      {/* ── Body: drawing rail + layout strip + chart panes ── */}
       <div className="relative flex min-h-0 flex-1">
-        <DrawingRail selected={selectedTool} onSelect={setSelectedTool} />
+        <DrawingRail selected="" onSelect={() => {}} />
+
+        {/* Layout strip — slim column with the Layout button at top.
+            The popup opens to the right of this strip. */}
+        <LayoutStrip
+          popupOpen={layoutPopupOpen}
+          onTogglePopup={() => setLayoutPopupOpen((v) => !v)}
+          currentLayout={chartLayout}
+          onSelectLayout={(l) => {
+            setChartLayout(l);
+            setLayoutPopupOpen(false);
+          }}
+          onClosePopup={() => setLayoutPopupOpen(false)}
+        />
 
         {/* Chart container fills the rest */}
         <div className="relative min-w-0 flex-1 bg-[#131722]">
-          {/* Multi-pane chart layout — driven by chartLayout state */}
+          {/* Multi-pane chart layout — each pane has independent state */}
           <ChartPaneGrid
             layout={chartLayout}
-            timeframe={timeframe}
-            symbol={SYMBOL}
+            paneStates={paneStates}
+            onPaneSymbolChange={(index, symbol) =>
+              setPaneStates((prev) => {
+                const next = [...prev];
+                if (next[index]) next[index] = { ...next[index], symbol };
+                return next;
+              })
+            }
+            onPaneTimeframeChange={(index, timeframe) =>
+              setPaneStates((prev) => {
+                const next = [...prev];
+                if (next[index]) next[index] = { ...next[index], timeframe };
+                return next;
+              })
+            }
             settings={settings}
-            bidPrice={SELL_PRICE}
-            askPrice={BUY_PRICE}
+            onToggleSettings={(key) =>
+              update({ [key]: !settings[key] } as Partial<ChartSettings>)
+            }
+            onSave={handleSave}
+            onLoad={handleLoad}
+            saveMessage={saveMessage}
             pendingOrderPrice={pendingOrderPrice}
+            onNewOrder={() => useMarketsStore.getState().setLeftPanelMode("order")}
           />
-
-          {/* Quick Sell/Buy block — upper-left overlay (only on Single) */}
-          {chartLayout === "single" && (
-            <QuickTrade sellPrice={SELL_PRICE} buyPrice={BUY_PRICE} />
-          )}
-
-          {/* Chart settings popover — anchored top-right */}
-          {settingsOpen && (
-            <ChartSettingsPopover
-              settings={settings}
-              onToggle={(key) =>
-                update({ [key]: !settings[key] } as Partial<ChartSettings>)
-              }
-              onSave={handleSave}
-              onLoad={handleLoad}
-              onClose={() => setSettingsOpen(false)}
-              message={saveMessage}
-            />
-          )}
-
-          {/* Layout setup popup — anchored top-right, below the toolbar */}
-          {layoutPopupOpen && (
-            <LayoutSetupPopover
-              currentLayout={chartLayout}
-              onSelect={(l) => {
-                setChartLayout(l);
-                setLayoutPopupOpen(false);
-              }}
-              onClose={() => setLayoutPopupOpen(false)}
-            />
-          )}
         </div>
       </div>
 
@@ -377,193 +368,436 @@ export function ChartWorkspace({
 }
 
 /* ------------------------------------------------------------------ */
-/* Top chart toolbar                                                   */
+/* Per-pane state type                                                 */
 /* ------------------------------------------------------------------ */
 
-function ChartToolbar({
-  symbol,
-  changePct,
-  timeframe,
-  onTimeframe,
-  settingsOpen,
-  onToggleSettings,
-  onToggleInstruments,
-  onNewOrder,
-  layoutPopupOpen,
-  onToggleLayoutPopup,
-  chartLayout,
-  onSelectLayout,
-}: {
+interface PaneState {
   symbol: string;
-  changePct: number | null;
   timeframe: Timeframe;
-  onTimeframe: (t: Timeframe) => void;
-  settingsOpen: boolean;
-  onToggleSettings: () => void;
-  onToggleInstruments: () => void;
-  onNewOrder: () => void;
-  layoutPopupOpen: boolean;
-  onToggleLayoutPopup: () => void;
-  chartLayout: ChartLayout;
-  onSelectLayout: (l: ChartLayout) => void;
-}) {
-  const [fav, setFav] = useState(false);
-  const chgColor = (changePct ?? 0) < 0 ? C_DOWN : C_UP;
-  const chgSign = (changePct ?? 0) >= 0 ? "+" : "";
-  const chgText =
-    changePct === null
-      ? "0.00%"
-      : `${chgSign}${changePct.toFixed(2)}%`;
+}
 
+/* ------------------------------------------------------------------ */
+/* Layout strip — slim column with the Layout button                    */
+/* ------------------------------------------------------------------ */
+
+function LayoutStrip({
+  popupOpen,
+  onTogglePopup,
+  currentLayout,
+  onSelectLayout,
+  onClosePopup,
+}: {
+  popupOpen: boolean;
+  onTogglePopup: () => void;
+  currentLayout: ChartLayout;
+  onSelectLayout: (l: ChartLayout) => void;
+  onClosePopup: () => void;
+}) {
   return (
     <div
-      className="flex h-10 shrink-0 items-center gap-2 border-b px-3 themed"
-      style={{
-        background: C_PANEL,
-        borderColor: C_BORDER,
-      }}
+      className="relative flex w-7 shrink-0 flex-col items-center border-r themed"
+      style={{ background: C_PANEL, borderColor: C_BORDER }}
     >
-      {/* Instrument symbol — clicking toggles the Instruments panel */}
-      <button
-        type="button"
-        onClick={onToggleInstruments}
-        title="Toggle instruments panel"
-        className="rounded px-1 py-0.5 text-[13px] font-bold text-white transition-colors hover:bg-[#2a2e39]"
-      >
-        {symbol}
-      </button>
-
-      {/* Percentage badge */}
-      <span
-        className="rounded px-1.5 py-0.5 text-[10px] font-bold text-white"
-        style={{ background: chgColor }}
-      >
-        {chgText}
-      </span>
-
-      {/* Favorite star */}
-      <button
-        type="button"
-        title="Add to favorites"
-        onClick={() => setFav((v) => !v)}
-        className="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-[#2a2e39]"
-      >
-        <Star
-          className="h-3.5 w-3.5"
-          style={{
-            color: fav ? "#d4a72c" : C_TEXT_MUTED,
-            fill: fav ? "#d4a72c" : "transparent",
-          }}
-        />
-      </button>
-
-      {/* Toolbar info icons — match screenshot arrangement */}
-      <ToolbarBtn icon={Bell} title="Alerts" />
-      <ToolbarBtn icon={Info} title="Details" />
-      <ToolbarBtn icon={Clock} title="History" />
-
-      <Separator />
-
-      {/* Timeframe selector */}
-      <div className="flex items-center gap-0.5 rounded p-0.5" style={{ background: "#2a2e39" }}>
-        {TIMEFRAMES.slice(0, 5).map((tf) => (
-          <button
-            key={tf}
-            type="button"
-            onClick={() => onTimeframe(tf)}
-            className={cn(
-              "rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors",
-              timeframe === tf
-                ? "bg-[#363a45] text-white"
-                : "text-[#787b86] hover:text-white",
-            )}
-          >
-            {tf}
-          </button>
-        ))}
-      </div>
-
-      <Separator />
-
-      {/* Layout setup button — opens the chart-layout popup */}
       <button
         type="button"
         title="Layout setup"
         aria-label="Layout setup"
-        aria-expanded={layoutPopupOpen}
-        onClick={onToggleLayoutPopup}
+        aria-expanded={popupOpen}
+        onClick={onTogglePopup}
         className={cn(
-          "flex h-6 w-6 items-center justify-center rounded transition-colors",
-          layoutPopupOpen
+          "flex h-7 w-7 items-center justify-center transition-colors",
+          popupOpen
             ? "bg-[#2a2e39] text-white"
             : "text-[#787b86] hover:bg-[#2a2e39] hover:text-white",
         )}
       >
-        <LayoutGrid className="h-3.5 w-3.5" />
+        <LayoutGrid className="h-4 w-4" />
       </button>
 
-      <Separator />
-
-      {/* New order button — opens Order Details in the left contextual panel */}
-      <button
-        type="button"
-        onClick={onNewOrder}
-        className="flex items-center gap-1.5 rounded px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:opacity-90"
-        style={{ background: C_BLUE }}
-      >
-        <Plus className="h-3 w-3" />
-        New order
-      </button>
-
-      {/* Round target button beside New order */}
-      <button
-        type="button"
-        title="Trade options"
-        className="flex h-6 w-6 items-center justify-center rounded text-white transition-colors hover:bg-[#2a2e39]"
-        style={{ background: "#363a45" }}
-      >
-        <Crosshair className="h-3 w-3" />
-      </button>
-
-      {/* Spacer pushes the gear to the far right */}
-      <div className="flex-1" />
-
-      {/* Settings gear (far right) — toggles the Chart Settings popover */}
-      <button
-        type="button"
-        title="Chart settings"
-        aria-label="Chart settings"
-        aria-expanded={settingsOpen}
-        onClick={onToggleSettings}
-        className={cn(
-          "flex h-6 w-6 items-center justify-center rounded transition-colors",
-          settingsOpen
-            ? "bg-[#2a2e39] text-white"
-            : "text-[#787b86] hover:bg-[#2a2e39] hover:text-white",
-        )}
-      >
-        <Settings className="h-3.5 w-3.5" />
-      </button>
+      {/* Popup opens to the right of this strip */}
+      {popupOpen && (
+        <LayoutSetupPopover
+          className="absolute left-full top-0 ml-1"
+          currentLayout={currentLayout}
+          onSelect={onSelectLayout}
+          onClose={onClosePopup}
+        />
+      )}
     </div>
   );
 }
 
-function ToolbarBtn({
-  icon: Icon,
-  title,
+/* ------------------------------------------------------------------ */
+/* Chart pane — independent chart with compact header                  */
+/* ------------------------------------------------------------------ */
+
+function ChartPane({
+  paneIndex,
+  symbol,
+  timeframe,
+  onSymbolChange,
+  onTimeframeChange,
+  settings,
+  onToggleSettings,
+  settingsOpen,
+  onToggleSettingsOpen,
+  onSave,
+  onLoad,
+  saveMessage,
+  pendingOrderPrice,
+  onNewOrder,
+  isPrimary,
 }: {
-  icon: typeof Star;
-  title: string;
+  paneIndex: number;
+  symbol: string;
+  timeframe: Timeframe;
+  onSymbolChange: (symbol: string) => void;
+  onTimeframeChange: (tf: Timeframe) => void;
+  settings: ChartSettings;
+  onToggleSettings: (key: keyof ChartSettings) => void;
+  settingsOpen: boolean;
+  onToggleSettingsOpen: () => void;
+  onSave: () => void;
+  onLoad: () => void;
+  saveMessage: string | null;
+  pendingOrderPrice: number | null;
+  onNewOrder: () => void;
+  isPrimary: boolean;
 }) {
+  const [changeInstOpen, setChangeInstOpen] = useState(false);
+  const inst = useMemo(
+    () => getInstrumentBySymbol(symbol) ?? getInstrumentBySymbol("EURUSD")!,
+    [symbol],
+  );
+
+  const sellPrice = inst.bid;
+  const buyPrice = inst.ask;
+  const changePct = inst.changePct;
+  const chgColor = (changePct ?? 0) < 0 ? C_DOWN : C_UP;
+  const chgText =
+    changePct === null
+      ? "0.00%"
+      : `${(changePct ?? 0) >= 0 ? "+" : ""}${changePct!.toFixed(2)}%`;
+
   return (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      className="flex h-6 w-6 items-center justify-center rounded text-[#787b86] transition-colors hover:bg-[#2a2e39] hover:text-white"
+    <div className="relative flex h-full w-full flex-col bg-[#131722]">
+      {/* ── Compact header ── */}
+      <div
+        className="flex h-8 shrink-0 items-center gap-1 border-b px-2 themed"
+        style={{ background: C_PANEL, borderColor: C_BORDER }}
+      >
+        {/* Instrument icon */}
+        <InstrumentIcon
+          symbol={inst.symbol}
+          base={inst.base}
+          assetClass={inst.assetClass}
+          badge={inst.badge}
+        />
+
+        {/* Symbol + dropdown — opens Change Instrument popover */}
+        <button
+          type="button"
+          onClick={() => setChangeInstOpen((v) => !v)}
+          className="flex items-center gap-0.5 rounded px-0.5 py-0.5 text-[11px] font-bold text-white transition-colors hover:bg-[#2a2e39]"
+        >
+          {inst.symbol}
+          <ChevronDown className="h-2.5 w-2.5 text-[#787b86]" />
+        </button>
+
+        {/* Change% badge */}
+        <span
+          className="rounded px-1 py-0.5 text-[9px] font-bold text-white"
+          style={{ background: chgColor }}
+        >
+          {chgText}
+        </span>
+
+        {/* Compact timeframe selector — 4 TFs inline */}
+        <div
+          className="ml-1 flex items-center gap-0.5 rounded p-0.5"
+          style={{ background: "#2a2e39" }}
+        >
+          {TIMEFRAMES.slice(0, 4).map((tf) => (
+            <button
+              key={tf}
+              type="button"
+              onClick={() => onTimeframeChange(tf)}
+              className={cn(
+                "rounded px-1 py-0.5 text-[9px] font-medium transition-colors",
+                timeframe === tf
+                  ? "bg-[#363a45] text-white"
+                  : "text-[#787b86] hover:text-white",
+              )}
+            >
+              {tf}
+            </button>
+          ))}
+        </div>
+
+        {/* New order button */}
+        <button
+          type="button"
+          onClick={onNewOrder}
+          className="ml-auto flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-semibold text-white transition-colors hover:opacity-90"
+          style={{ background: C_BLUE }}
+        >
+          <Plus className="h-2.5 w-2.5" />
+          New order
+        </button>
+
+        {/* Settings gear */}
+        <button
+          type="button"
+          title="Chart settings"
+          aria-label="Chart settings"
+          aria-expanded={settingsOpen}
+          onClick={onToggleSettingsOpen}
+          className={cn(
+            "flex h-5 w-5 items-center justify-center rounded transition-colors",
+            settingsOpen
+              ? "bg-[#2a2e39] text-white"
+              : "text-[#787b86] hover:bg-[#2a2e39] hover:text-white",
+          )}
+        >
+          <Settings className="h-3 w-3" />
+        </button>
+      </div>
+
+      {/* ── Chart body ── */}
+      <div className="relative min-h-0 flex-1">
+        <CandleChart
+          timeframe={timeframe}
+          symbol={symbol}
+          settings={isPrimary ? settings : { ...settings, showBid: false, showAsk: false }}
+          bidPrice={sellPrice}
+          askPrice={buyPrice}
+          pendingOrderPrice={isPrimary ? pendingOrderPrice : null}
+        />
+
+        {/* Compact Sell/Buy overlay — upper-left */}
+        <CompactQuickTrade sellPrice={sellPrice} buyPrice={buyPrice} />
+
+        {/* Change instrument popover */}
+        {changeInstOpen && (
+          <ChangeInstrumentPopover
+            currentSymbol={symbol}
+            onSelect={(s) => {
+              onSymbolChange(s);
+              setChangeInstOpen(false);
+            }}
+            onClose={() => setChangeInstOpen(false)}
+          />
+        )}
+
+        {/* Chart settings popover (shared global settings) */}
+        {settingsOpen && (
+          <ChartSettingsPopover
+            settings={settings}
+            onToggle={onToggleSettings}
+            onSave={onSave}
+            onLoad={onLoad}
+            onClose={onToggleSettingsOpen}
+            message={saveMessage}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Compact Sell/Buy block (per-pane overlay)                          */
+/* ------------------------------------------------------------------ */
+
+function CompactQuickTrade({
+  sellPrice,
+  buyPrice,
+}: {
+  sellPrice: number;
+  buyPrice: number;
+}) {
+  const [size, setSize] = useState(0.01);
+  return (
+    <div className="pointer-events-none absolute left-1.5 top-1.5 z-10">
+      <div
+        className="pointer-events-auto flex overflow-hidden rounded text-[9px] font-bold text-white shadow-md"
+        style={{ background: C_PANEL, border: `1px solid ${C_BORDER}` }}
+      >
+        {/* Sell */}
+        <button
+          type="button"
+          className="flex flex-col items-center justify-center px-1.5 py-1 transition-opacity hover:opacity-90"
+          style={{ background: C_DOWN }}
+        >
+          <span className="text-[7px] uppercase opacity-90">Sell</span>
+          <span className="font-mono text-[10px] tabular-nums">{sellPrice.toFixed(5)}</span>
+        </button>
+
+        {/* Size controls */}
+        <div className="flex flex-col items-center justify-center px-1 py-1">
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setSize((s) => Math.max(0.01, +(s - 0.01).toFixed(2)))}
+              className="flex h-4 w-4 items-center justify-center rounded text-[#787b86] hover:bg-[#2a2e39] hover:text-white"
+            >
+              <Minus className="h-2.5 w-2.5" />
+            </button>
+            <span className="w-7 text-center font-mono text-[10px] tabular-nums text-white">
+              {size.toFixed(2)}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSize((s) => +(s + 0.01).toFixed(2))}
+              className="flex h-4 w-4 items-center justify-center rounded text-[#787b86] hover:bg-[#2a2e39] hover:text-white"
+            >
+              <Plus className="h-2.5 w-2.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Buy */}
+        <button
+          type="button"
+          className="flex flex-col items-center justify-center px-1.5 py-1 transition-opacity hover:opacity-90"
+          style={{ background: C_UP }}
+        >
+          <span className="text-[7px] uppercase opacity-90">Buy</span>
+          <span className="font-mono text-[10px] tabular-nums">{buyPrice.toFixed(5)}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Change Instrument popover (per-pane)                                */
+/* ------------------------------------------------------------------ */
+
+function ChangeInstrumentPopover({
+  currentSymbol,
+  onSelect,
+  onClose,
+}: {
+  currentSymbol: string;
+  onSelect: (symbol: string) => void;
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const { favorites, toggle } = useFavorites();
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (!e.composedPath().includes(rootRef.current)) onClose();
+    };
+    const id = window.setTimeout(() => {
+      document.addEventListener("mousedown", handler);
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("mousedown", handler);
+    };
+  }, [onClose]);
+
+  const visible = useMemo(() => {
+    if (!search.trim()) return INSTRUMENT_CATALOG;
+    const q = search.toLowerCase();
+    return INSTRUMENT_CATALOG.filter(
+      (i) =>
+        i.symbol.toLowerCase().includes(q) ||
+        i.name.toLowerCase().includes(q),
+    );
+  }, [search]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="absolute left-1.5 top-1.5 z-40 flex max-h-[300px] w-[200px] flex-col overflow-hidden rounded-md shadow-xl themed"
+      style={{
+        background: "#1e1e2d",
+        border: "1px solid #2a2a3c",
+        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.5)",
+      }}
     >
-      <Icon className="h-3.5 w-3.5" />
-    </button>
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 pb-1.5 pt-2">
+        <span className="text-[11px] font-semibold text-white">Change instrument</span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-fg-faint hover:text-fg"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="px-2 pb-1.5">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-1.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 text-fg-faint" />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search"
+            className="h-6 w-full rounded bg-surface-2 pl-6 pr-2 text-[10px] text-fg placeholder:text-fg-faint focus:outline-none focus:ring-1 focus:ring-[var(--accent)] themed"
+          />
+        </div>
+      </div>
+
+      {/* Scrollable list */}
+      <div className="min-h-0 flex-1 overflow-y-auto themed">
+        {visible.map((inst) => {
+          const isFav = favorites.has(inst.symbol);
+          const isCurrent = inst.symbol === currentSymbol;
+          return (
+            <button
+              key={inst.symbol}
+              type="button"
+              onClick={() => onSelect(inst.symbol)}
+              className={cn(
+                "flex w-full items-center gap-2 px-2 py-1.5 text-left text-[10px] transition-colors themed",
+                isCurrent
+                  ? "bg-active text-fg"
+                  : "text-[#c4cbde] hover:bg-[#2a2a3c] hover:text-white",
+              )}
+            >
+              <InstrumentIcon
+                symbol={inst.symbol}
+                base={inst.base}
+                assetClass={inst.assetClass}
+                badge={inst.badge}
+              />
+              <span className="flex-1 truncate font-medium">{inst.symbol}</span>
+              <span
+                role="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggle(inst.symbol);
+                }}
+                className="flex h-4 w-4 items-center justify-center"
+              >
+                <Star
+                  className={cn(
+                    "h-2.5 w-2.5 transition-colors",
+                    isFav
+                      ? "fill-[var(--accent)] text-[var(--accent)]"
+                      : "text-fg-faint hover:text-fg",
+                  )}
+                />
+              </span>
+            </button>
+          );
+        })}
+        {visible.length === 0 && (
+          <div className="px-3 py-4 text-center text-[10px] text-fg-faint">
+            No instruments found.
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -739,79 +973,6 @@ function CheckRow({
 }
 
 /* ------------------------------------------------------------------ */
-/* Quick Sell/Buy block (upper-left chart overlay)                    */
-/* ------------------------------------------------------------------ */
-
-function QuickTrade({
-  sellPrice,
-  buyPrice,
-}: {
-  sellPrice: number;
-  buyPrice: number;
-}) {
-  const [size, setSize] = useState(0.01);
-
-  return (
-    <div className="pointer-events-none absolute left-3 top-3 z-10 flex flex-col gap-1">
-      {/* Sell / Size / Buy row */}
-      <div
-        className="pointer-events-auto flex overflow-hidden rounded text-[10px] font-bold text-white shadow-md"
-        style={{ background: C_PANEL, border: `1px solid ${C_BORDER}` }}
-      >
-        {/* Sell */}
-        <button
-          type="button"
-          className="flex w-[72px] flex-col items-center justify-center px-2 py-1.5 transition-opacity hover:opacity-90"
-          style={{ background: C_DOWN }}
-        >
-          <span className="text-[9px] uppercase tracking-wide opacity-90">Sell</span>
-          <span className="font-mono text-[12px] tabular-nums">{sellPrice.toFixed(5)}</span>
-        </button>
-
-        {/* Size controls */}
-        <div className="flex w-[88px] flex-col items-center justify-center px-1 py-1">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setSize((s) => Math.max(0.01, +(s - 0.01).toFixed(2)))}
-              className="flex h-5 w-5 items-center justify-center rounded text-[#787b86] hover:bg-[#2a2e39] hover:text-white"
-            >
-              <Minus className="h-3 w-3" />
-            </button>
-            <span className="w-10 text-center font-mono text-[12px] tabular-nums text-white">
-              {size.toFixed(2)}
-            </span>
-            <button
-              type="button"
-              onClick={() => setSize((s) => +(s + 0.01).toFixed(2))}
-              className="flex h-5 w-5 items-center justify-center rounded text-[#787b86] hover:bg-[#2a2e39] hover:text-white"
-            >
-              <Plus className="h-3 w-3" />
-            </button>
-          </div>
-        </div>
-
-        {/* Buy */}
-        <button
-          type="button"
-          className="flex w-[72px] flex-col items-center justify-center px-2 py-1.5 transition-opacity hover:opacity-90"
-          style={{ background: C_UP }}
-        >
-          <span className="text-[9px] uppercase tracking-wide opacity-90">Buy</span>
-          <span className="font-mono text-[12px] tabular-nums">{buyPrice.toFixed(5)}</span>
-        </button>
-      </div>
-
-      {/* OHLC / movement line — below the block */}
-      <div className="pointer-events-none px-1 font-mono text-[9px] tabular-nums" style={{ color: C_TEXT_MUTED }}>
-        O 1.16795 H 1.16806 L 1.16795 C 1.16803{" "}
-        <span style={{ color: C_DOWN }}>−0.00008 (−0.01%)</span>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* Chart layout popover + multi-pane grid                              */
 /* ------------------------------------------------------------------ */
 
@@ -819,10 +980,12 @@ function LayoutSetupPopover({
   currentLayout,
   onSelect,
   onClose,
+  className,
 }: {
   currentLayout: ChartLayout;
   onSelect: (l: ChartLayout) => void;
   onClose: () => void;
+  className?: string;
 }) {
   // Close on outside click + Escape key.
   const rootRef = useRef<HTMLDivElement>(null);
@@ -848,7 +1011,10 @@ function LayoutSetupPopover({
   return (
     <div
       ref={rootRef}
-      className="absolute right-3 top-3 z-30 w-[220px] overflow-hidden rounded-md shadow-xl themed"
+      className={cn(
+        "z-30 w-[220px] overflow-hidden rounded-md shadow-xl themed",
+        className,
+      )}
       style={{
         background: "#1e1e2d",
         border: "1px solid #2a2a3c",
@@ -907,32 +1073,39 @@ function LayoutSetupPopover({
   );
 }
 
-/** Renders N chart panes arranged according to the selected layout.
-    Each pane is a CandleChart instance reusing the existing chart
-    component. The QuickTrade overlay + pending-order price line are
-    only rendered on the first pane to avoid visual clutter. */
+/** Renders N independent chart panes arranged according to the selected
+    layout. Each pane has its own symbol, timeframe, compact header,
+    QuickTrade overlay, and Change Instrument popover. */
 function ChartPaneGrid({
   layout,
-  timeframe,
-  symbol,
+  paneStates,
+  onPaneSymbolChange,
+  onPaneTimeframeChange,
   settings,
-  bidPrice,
-  askPrice,
+  onToggleSettings,
+  onSave,
+  onLoad,
+  saveMessage,
   pendingOrderPrice,
+  onNewOrder,
 }: {
   layout: ChartLayout;
-  timeframe: Timeframe;
-  symbol: string;
+  paneStates: PaneState[];
+  onPaneSymbolChange: (index: number, symbol: string) => void;
+  onPaneTimeframeChange: (index: number, tf: Timeframe) => void;
   settings: ChartSettings;
-  bidPrice: number;
-  askPrice: number;
+  onToggleSettings: (key: keyof ChartSettings) => void;
+  onSave: () => void;
+  onLoad: () => void;
+  saveMessage: string | null;
   pendingOrderPrice: number | null;
+  onNewOrder: () => void;
 }) {
   const meta = LAYOUT_OPTIONS.find((o) => o.id === layout)!;
   const paneCount = PANE_COUNT[layout];
+  const [settingsPane, setSettingsPane] = useState<number | null>(null);
 
-  // Build the grid template. For "triple" we use a 2×2 grid where the
-  // first cell spans 2 rows (1 big left + 2 small right).
+  // Build the grid template.
   const gridStyle: React.CSSProperties =
     layout === "triple"
       ? {
@@ -955,24 +1128,35 @@ function ChartPaneGrid({
     >
       {Array.from({ length: paneCount }).map((_, i) => {
         const isPrimary = i === 0;
-        // For "triple", pane 0 spans both rows (the big left chart).
         const cellStyle: React.CSSProperties =
           layout === "triple" && i === 0
             ? { gridColumn: "1", gridRow: "1 / span 2" }
             : {};
+        const paneState = paneStates[i] ?? { symbol: "EURUSD", timeframe: "M1" as Timeframe };
         return (
           <div
             key={i}
             className="relative min-w-0 overflow-hidden bg-[#131722]"
             style={cellStyle}
           >
-            <CandleChart
-              timeframe={timeframe}
-              symbol={symbol}
-              settings={isPrimary ? settings : { ...settings, showBid: false, showAsk: false }}
-              bidPrice={bidPrice}
-              askPrice={askPrice}
+            <ChartPane
+              paneIndex={i}
+              symbol={paneState.symbol}
+              timeframe={paneState.timeframe}
+              onSymbolChange={(s) => onPaneSymbolChange(i, s)}
+              onTimeframeChange={(tf) => onPaneTimeframeChange(i, tf)}
+              settings={settings}
+              onToggleSettings={onToggleSettings}
+              settingsOpen={settingsPane === i}
+              onToggleSettingsOpen={() =>
+                setSettingsPane((prev) => (prev === i ? null : i))
+              }
+              onSave={onSave}
+              onLoad={onLoad}
+              saveMessage={saveMessage}
               pendingOrderPrice={isPrimary ? pendingOrderPrice : null}
+              onNewOrder={onNewOrder}
+              isPrimary={isPrimary}
             />
           </div>
         );
