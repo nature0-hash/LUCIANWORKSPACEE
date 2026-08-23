@@ -47,32 +47,22 @@ import {
   Clock,
   Settings,
   Crosshair,
-  TrendingUp,
   Minus,
   Plus,
-  MousePointer2,
-  Ruler,
-  PenTool,
-  Eraser,
-  ZoomIn,
-  Trash2,
-  Type,
-  Minus as HorizontalLine,
-  MoveVertical as VerticalLine,
-  Triangle,
-  Circle,
-  Square,
-  Pencil,
-  Magnet,
   ChevronDown,
   ChevronUp,
   Maximize2,
-  MinusCircle,
   Save,
   FolderOpen,
   HelpCircle,
   Check,
   X,
+  LayoutGrid,
+  Columns2,
+  Rows2,
+  Columns3,
+  Grid2x2,
+  Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMarketsStore } from "@/store/markets";
@@ -85,6 +75,56 @@ import { getInstrumentBySymbol } from "@/lib/markets/catalog";
 const TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W"] as const;
 type Timeframe = (typeof TIMEFRAMES)[number];
 
+/* Chart layout modes — controls how many chart panes are visible
+   and how they are arranged. */
+type ChartLayout =
+  | "single"
+  | "double-columns"
+  | "double-rows"
+  | "triple"
+  | "quadruple";
+
+/* Layout option metadata — drives both the popup UI and the grid
+   container arrangement. */
+const LAYOUT_OPTIONS: {
+  id: ChartLayout;
+  label: string;
+  icon: typeof LayoutGrid;
+  /* CSS grid template — columns × rows */
+  cols: number;
+  rows: number;
+  /* Optional col-span overrides for cells (1-indexed) used to build
+     asymmetric layouts like "triple" (1 big + 2 small). */
+  spans?: { col: number; row: number }[];
+}[] = [
+  { id: "single", label: "Single", icon: Square, cols: 1, rows: 1 },
+  {
+    id: "double-columns",
+    label: "Double in columns",
+    icon: Columns2,
+    cols: 2,
+    rows: 1,
+  },
+  {
+    id: "double-rows",
+    label: "Double in rows",
+    icon: Rows2,
+    cols: 1,
+    rows: 2,
+  },
+  { id: "triple", label: "Triple", icon: Columns3, cols: 2, rows: 2, spans: [{ col: 1, row: 2 }] },
+  { id: "quadruple", label: "Quadruple", icon: Grid2x2, cols: 2, rows: 2 },
+];
+
+/* Number of chart panes each layout renders. */
+const PANE_COUNT: Record<ChartLayout, number> = {
+  single: 1,
+  "double-columns": 2,
+  "double-rows": 2,
+  triple: 3,
+  quadruple: 4,
+};
+
 /* Reference colors — match the screenshot palette. */
 const C_BG = "#131722"; // chart background
 const C_PANEL = "#1e222d"; // toolbar / drawing rail / bottom strip
@@ -95,7 +135,6 @@ const C_TEXT_MUTED = "#787b86";
 const C_UP = "#089981"; // bullish green
 const C_DOWN = "#f23645"; // bearish red
 const C_BLUE = "#2962ff"; // action blue
-const C_ACTIVE_TOOL = "#7c3aed"; // purple active-tool indicator
 
 /* ------------------------------------------------------------------ */
 /* Chart settings state + persistence                                  */
@@ -196,6 +235,9 @@ export function ChartWorkspace({
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [bottomExpanded, setBottomExpanded] = useState(false);
   const [internalPendingPrice, setInternalPendingPrice] = useState<number | null>(null);
+  // Chart layout — controls how many chart panes are visible.
+  const [chartLayout, setChartLayout] = useState<ChartLayout>("single");
+  const [layoutPopupOpen, setLayoutPopupOpen] = useState(false);
   // The pending-order chart line takes its price from EITHER the lifted
   // override (from OrderDetails panel) OR the bottom panel's pending tab,
   // whichever was last set. The override takes priority when defined.
@@ -265,15 +307,24 @@ export function ChartWorkspace({
         onToggleSettings={() => setSettingsOpen((v) => !v)}
         onToggleInstruments={onToggleInstruments}
         onNewOrder={() => useMarketsStore.getState().setLeftPanelMode("order")}
+        layoutPopupOpen={layoutPopupOpen}
+        onToggleLayoutPopup={() => setLayoutPopupOpen((v) => !v)}
+        chartLayout={chartLayout}
+        onSelectLayout={(l) => {
+          setChartLayout(l);
+          setLayoutPopupOpen(false);
+        }}
       />
 
-      {/* ── Body: drawing rail + chart + overlays ── */}
+      {/* ── Body: drawing rail + chart panes + overlays ── */}
       <div className="relative flex min-h-0 flex-1">
         <DrawingRail selected={selectedTool} onSelect={setSelectedTool} />
 
         {/* Chart container fills the rest */}
         <div className="relative min-w-0 flex-1 bg-[#131722]">
-          <CandleChart
+          {/* Multi-pane chart layout — driven by chartLayout state */}
+          <ChartPaneGrid
+            layout={chartLayout}
             timeframe={timeframe}
             symbol={SYMBOL}
             settings={settings}
@@ -282,8 +333,10 @@ export function ChartWorkspace({
             pendingOrderPrice={pendingOrderPrice}
           />
 
-          {/* Quick Sell/Buy block — upper-left overlay */}
-          <QuickTrade sellPrice={SELL_PRICE} buyPrice={BUY_PRICE} />
+          {/* Quick Sell/Buy block — upper-left overlay (only on Single) */}
+          {chartLayout === "single" && (
+            <QuickTrade sellPrice={SELL_PRICE} buyPrice={BUY_PRICE} />
+          )}
 
           {/* Chart settings popover — anchored top-right */}
           {settingsOpen && (
@@ -296,6 +349,18 @@ export function ChartWorkspace({
               onLoad={handleLoad}
               onClose={() => setSettingsOpen(false)}
               message={saveMessage}
+            />
+          )}
+
+          {/* Layout setup popup — anchored top-right, below the toolbar */}
+          {layoutPopupOpen && (
+            <LayoutSetupPopover
+              currentLayout={chartLayout}
+              onSelect={(l) => {
+                setChartLayout(l);
+                setLayoutPopupOpen(false);
+              }}
+              onClose={() => setLayoutPopupOpen(false)}
             />
           )}
         </div>
@@ -324,6 +389,10 @@ function ChartToolbar({
   onToggleSettings,
   onToggleInstruments,
   onNewOrder,
+  layoutPopupOpen,
+  onToggleLayoutPopup,
+  chartLayout,
+  onSelectLayout,
 }: {
   symbol: string;
   changePct: number | null;
@@ -333,6 +402,10 @@ function ChartToolbar({
   onToggleSettings: () => void;
   onToggleInstruments: () => void;
   onNewOrder: () => void;
+  layoutPopupOpen: boolean;
+  onToggleLayoutPopup: () => void;
+  chartLayout: ChartLayout;
+  onSelectLayout: (l: ChartLayout) => void;
 }) {
   const [fav, setFav] = useState(false);
   const chgColor = (changePct ?? 0) < 0 ? C_DOWN : C_UP;
@@ -409,6 +482,25 @@ function ChartToolbar({
           </button>
         ))}
       </div>
+
+      <Separator />
+
+      {/* Layout setup button — opens the chart-layout popup */}
+      <button
+        type="button"
+        title="Layout setup"
+        aria-label="Layout setup"
+        aria-expanded={layoutPopupOpen}
+        onClick={onToggleLayoutPopup}
+        className={cn(
+          "flex h-6 w-6 items-center justify-center rounded transition-colors",
+          layoutPopupOpen
+            ? "bg-[#2a2e39] text-white"
+            : "text-[#787b86] hover:bg-[#2a2e39] hover:text-white",
+        )}
+      >
+        <LayoutGrid className="h-3.5 w-3.5" />
+      </button>
 
       <Separator />
 
@@ -720,107 +812,199 @@ function QuickTrade({
 }
 
 /* ------------------------------------------------------------------ */
-/* Drawing rail (left vertical chart toolbar)                          */
+/* Chart layout popover + multi-pane grid                              */
 /* ------------------------------------------------------------------ */
 
-interface RailTool {
-  id: string;
-  icon: typeof Star;
-  label: string;
+function LayoutSetupPopover({
+  currentLayout,
+  onSelect,
+  onClose,
+}: {
+  currentLayout: ChartLayout;
+  onSelect: (l: ChartLayout) => void;
+  onClose: () => void;
+}) {
+  // Close on outside click + Escape key.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handlePointer = (e: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (!e.composedPath().includes(rootRef.current)) onClose();
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    const id = window.setTimeout(() => {
+      document.addEventListener("mousedown", handlePointer);
+      document.addEventListener("keydown", handleKey);
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="absolute right-3 top-3 z-30 w-[220px] overflow-hidden rounded-md shadow-xl themed"
+      style={{
+        background: "#1e1e2d",
+        border: "1px solid #2a2a3c",
+        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.5)",
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 pb-2 pt-3">
+        <span className="text-[13px] font-semibold text-white">Layout setup</span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close layout popup"
+          title="Close"
+          className="text-fg-faint transition-colors hover:text-fg"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* Layout option rows */}
+      <div className="pb-2">
+        {LAYOUT_OPTIONS.map((opt) => {
+          const Icon = opt.icon;
+          const active = currentLayout === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => onSelect(opt.id)}
+              className={cn(
+                "flex w-full items-center gap-3 px-4 py-2 text-left text-[12px] transition-colors themed",
+                active
+                  ? "text-[var(--accent)]"
+                  : "text-[#c4cbde] hover:bg-[#2a2a3c] hover:text-white",
+              )}
+            >
+              <Icon
+                className={cn(
+                  "h-4 w-4",
+                  active ? "text-[var(--accent)]" : "text-[#787b86]",
+                )}
+              />
+              <span className="font-medium">{opt.label}</span>
+              {active && (
+                <Check
+                  className="ml-auto h-3 w-3 text-[var(--accent)]"
+                  strokeWidth={3}
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
-const RAIL_GROUPS: RailTool[][] = [
-  [
-    { id: "cursor", icon: MousePointer2, label: "Cursor" },
-    { id: "crosshair", icon: Crosshair, label: "Crosshair" },
-    { id: "trend", icon: TrendingUp, label: "Trend line" },
-    { id: "hline", icon: HorizontalLine, label: "Horizontal line" },
-    { id: "vline", icon: VerticalLine, label: "Vertical line" },
-  ],
-  [
-    { id: "rect", icon: Square, label: "Rectangle" },
-    { id: "circle", icon: Circle, label: "Ellipse" },
-    { id: "triangle", icon: Triangle, label: "Triangle" },
-    { id: "text", icon: Type, label: "Text" },
-  ],
-  [
-    { id: "brush", icon: PenTool, label: "Brush" },
-    { id: "pencil", icon: Pencil, label: "Pencil" },
-    { id: "eraser", icon: Eraser, label: "Eraser" },
-  ],
-  [
-    { id: "magnet", icon: Magnet, label: "Magnet" },
-    { id: "ruler", icon: Ruler, label: "Measure" },
-    { id: "zoom", icon: ZoomIn, label: "Zoom" },
-    { id: "trash", icon: Trash2, label: "Remove drawings" },
-  ],
-];
+/** Renders N chart panes arranged according to the selected layout.
+    Each pane is a CandleChart instance reusing the existing chart
+    component. The QuickTrade overlay + pending-order price line are
+    only rendered on the first pane to avoid visual clutter. */
+function ChartPaneGrid({
+  layout,
+  timeframe,
+  symbol,
+  settings,
+  bidPrice,
+  askPrice,
+  pendingOrderPrice,
+}: {
+  layout: ChartLayout;
+  timeframe: Timeframe;
+  symbol: string;
+  settings: ChartSettings;
+  bidPrice: number;
+  askPrice: number;
+  pendingOrderPrice: number | null;
+}) {
+  const meta = LAYOUT_OPTIONS.find((o) => o.id === layout)!;
+  const paneCount = PANE_COUNT[layout];
+
+  // Build the grid template. For "triple" we use a 2×2 grid where the
+  // first cell spans 2 rows (1 big left + 2 small right).
+  const gridStyle: React.CSSProperties =
+    layout === "triple"
+      ? {
+          gridTemplateColumns: "1.4fr 1fr",
+          gridTemplateRows: "1fr 1fr",
+        }
+      : {
+          gridTemplateColumns: `repeat(${meta.cols}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${meta.rows}, minmax(0, 1fr))`,
+        };
+
+  return (
+    <div
+      className="grid h-full w-full"
+      style={{
+        ...gridStyle,
+        background: "#131722",
+        gap: "1px",
+      }}
+    >
+      {Array.from({ length: paneCount }).map((_, i) => {
+        const isPrimary = i === 0;
+        // For "triple", pane 0 spans both rows (the big left chart).
+        const cellStyle: React.CSSProperties =
+          layout === "triple" && i === 0
+            ? { gridColumn: "1", gridRow: "1 / span 2" }
+            : {};
+        return (
+          <div
+            key={i}
+            className="relative min-w-0 overflow-hidden bg-[#131722]"
+            style={cellStyle}
+          >
+            <CandleChart
+              timeframe={timeframe}
+              symbol={symbol}
+              settings={isPrimary ? settings : { ...settings, showBid: false, showAsk: false }}
+              bidPrice={bidPrice}
+              askPrice={askPrice}
+              pendingOrderPrice={isPrimary ? pendingOrderPrice : null}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Drawing rail (left vertical chart toolbar)                          */
+/* ------------------------------------------------------------------ */
+/* The drawing toolbar's icons have been intentionally removed for this
+   step. The container (width + border + background) is kept so the
+   overall Markets layout structure remains stable. Tools will be
+   re-added one by one in future updates. */
 
 function DrawingRail({
-  selected,
-  onSelect,
+  selected: _selected,
+  onSelect: _onSelect,
 }: {
   selected: string;
   onSelect: (id: string) => void;
 }) {
   return (
     <div
-      className="flex w-8 shrink-0 flex-col items-center gap-0.5 overflow-y-auto border-r py-1 themed"
+      className="flex w-8 shrink-0 flex-col items-center border-r themed"
       style={{
         background: C_PANEL,
         borderColor: C_BORDER,
       }}
-    >
-      {RAIL_GROUPS.map((group, gi) => (
-        <div key={gi} className="flex flex-col items-center gap-0.5">
-          {group.map((tool) => (
-            <RailButton
-              key={tool.id}
-              tool={tool}
-              active={selected === tool.id}
-              onClick={() => onSelect(tool.id)}
-            />
-          ))}
-          {gi < RAIL_GROUPS.length - 1 && (
-            <div className="my-1 h-px w-5" style={{ background: C_BORDER }} />
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RailButton({
-  tool,
-  active,
-  onClick,
-}: {
-  tool: RailTool;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const Icon = tool.icon;
-  return (
-    <button
-      type="button"
-      title={tool.label}
-      aria-label={tool.label}
-      onClick={onClick}
-      className={cn(
-        "relative flex h-6 w-6 items-center justify-center rounded transition-colors",
-        active ? "text-white" : "text-[#787b86] hover:bg-[#2a2e39] hover:text-white",
-      )}
-      style={active ? { background: "#2a2e39" } : undefined}
-    >
-      {active && (
-        <span
-          aria-hidden
-          className="absolute left-[-4px] top-0 h-full w-[3px] rounded-r"
-          style={{ background: C_ACTIVE_TOOL }}
-        />
-      )}
-      <Icon className="h-3.5 w-3.5" />
-    </button>
+      aria-hidden
+    />
   );
 }
 
