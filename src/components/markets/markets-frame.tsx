@@ -14,6 +14,7 @@ import { BrandMark } from "@/components/branding/BrandMark";
 import { InstrumentsPanel } from "@/components/markets/instruments-panel";
 import { OrderDetailsPanel } from "@/components/markets/order-details-panel";
 import { ChartWorkspace } from "@/components/markets/chart-workspace";
+import { IntelligencePanel } from "@/components/markets/intelligence-panel";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import type { ThemeId } from "@/lib/themes";
@@ -227,8 +228,16 @@ export function MarketsFrame() {
           </div>
         </div>
 
-        {/* Center trading workspace (chart + drawing rail + bottom panel) */}
-        <ChartWorkspace pendingOrderPriceOverride={pendingOrderPrice} />
+        {/* Center + right: chart workspace and Intelligence panel share
+            the remaining width as flex siblings so the chart resizes
+            when the Intelligence panel expands/collapses. */}
+        <div className="flex min-w-0 flex-1">
+          {/* Center trading workspace (chart + drawing rail + bottom panel) */}
+          <ChartWorkspace pendingOrderPriceOverride={pendingOrderPrice} />
+
+          {/* Right Markets intelligence area (Chat + Feed) */}
+          <IntelligencePanel />
+        </div>
       </div>
     </div>
   );
