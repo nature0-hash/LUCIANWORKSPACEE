@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { SlidersHorizontal, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { IconButton } from "@/components/ui/IconButton";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
+import { LilithSettings } from "@/components/lilith/lilith-settings";
+import { cn } from "@/lib/utils";
+
+type SettingsTab = "general" | "lilith";
 
 interface SettingsModalProps {
   open: boolean;
@@ -13,6 +17,7 @@ interface SettingsModalProps {
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const [tab, setTab] = useState<SettingsTab>("general");
 
   // Escape to close, body scroll lock, and initial focus on the close button
   // (which gives an obvious escape hatch and avoids tab-leak to the page).
@@ -72,20 +77,41 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         {/* Body */}
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           {/* Settings navigation */}
-          <nav className="themed shrink-0 border-b border-line-muted p-2 sm:w-44 sm:border-b-0 sm:border-r sm:p-3">
+          <nav className="themed shrink-0 space-y-1 border-b border-line-muted p-2 sm:w-44 sm:border-b-0 sm:border-r sm:p-3">
             <button
               type="button"
-              aria-current="page"
-              className="focus-ring themed flex w-full items-center gap-2.5 rounded-md bg-active px-2.5 py-1.5 text-left text-sm font-medium text-fg"
+              aria-current={tab === "general" ? "page" : undefined}
+              onClick={() => setTab("general")}
+              className={cn(
+                "focus-ring themed flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm font-medium transition-colors",
+                tab === "general"
+                  ? "bg-active text-fg"
+                  : "text-fg-muted hover:bg-hover hover:text-fg",
+              )}
             >
-              <SlidersHorizontal size={14} className="text-accent" />
+              <SlidersHorizontal size={14} className={tab === "general" ? "text-accent" : ""} />
               General
+            </button>
+            <button
+              type="button"
+              aria-current={tab === "lilith" ? "page" : undefined}
+              onClick={() => setTab("lilith")}
+              className={cn(
+                "focus-ring themed flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm font-medium transition-colors",
+                tab === "lilith"
+                  ? "bg-active text-fg"
+                  : "text-fg-muted hover:bg-hover hover:text-fg",
+              )}
+            >
+              <Sparkles size={14} className={tab === "lilith" ? "text-accent" : ""} />
+              Lilith
             </button>
           </nav>
 
           {/* Content */}
           <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-            <GeneralSettings />
+            {tab === "general" && <GeneralSettings />}
+            {tab === "lilith" && <LilithSettings />}
           </div>
         </div>
       </div>

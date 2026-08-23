@@ -8,6 +8,7 @@ import {
   SidebarDrawer,
 } from "@/components/layout/Sidebar";
 import { SettingsModal } from "@/components/settings/SettingsModal";
+import { LilithLayer } from "@/components/lilith/lilith-layer";
 import {
   SidebarProvider,
   useSidebar,
@@ -69,6 +70,11 @@ function AppShellInner({ children }: { children: ReactNode }) {
       </div>
 
       <SettingsModal open={settingsOpen} onClose={closeSettings} />
+
+      {/* Lilith — global floating AI assistant layer.
+          Persists across all route changes because she's a sibling
+          of {children}, not a child of any routed page. */}
+      <LilithLayer />
     </div>
   );
 }
