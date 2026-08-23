@@ -163,6 +163,34 @@ const ROWS: Row[] = [
   ["LRCUSD", "Loopring / US Dollar", "crypto", "crypto", "LRC", true, 0.0021, 0.0015, 0.0154, 0.0023, 23.53, 13.3, 4],
 ];
 
+/** Known quote currencies used to split forex/crypto pairs.
+    Longest first so "USDT" wins over "USD" when matching. */
+const QUOTE_CODES = ["USDT", "USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD", "MXN", "ZAR"];
+
+/** Extract the base currency / ticker prefix from a symbol.
+    Examples:
+      BTCUSD       → BTC
+      BTCUSD.Daily → BTC
+      EURUSD       → EUR
+      USDJPY       → USD
+      XAUUSD       → XAU
+      XTIUSD       → XTI
+      TSLA.Daily   → TSLA
+      NAS100       → NAS100  (no quote-currency match → return whole)
+      JPN225       → JPN225  */
+function deriveBase(symbol: string): string {
+  // Strip ".Daily" suffix first.
+  const clean = symbol.replace(/\.Daily$/i, "");
+  // Try matching each known quote currency at the end of the symbol.
+  // Longest first so USDT is matched before USD.
+  for (const q of QUOTE_CODES) {
+    if (clean.length > q.length && clean.endsWith(q)) {
+      return clean.slice(0, -q.length);
+    }
+  }
+  return clean;
+}
+
 /** Materialized catalog (converted from terse row tuples). */
 export const INSTRUMENT_CATALOG: CatalogInstrument[] = ROWS.map(
   (r) => ({
@@ -179,7 +207,7 @@ export const INSTRUMENT_CATALOG: CatalogInstrument[] = ROWS.map(
     changePct: r[10],
     spread: r[11],
     pricePrecision: r[12],
-    base: r[0].split(/[^A-Z0-9]/i)[0] ?? r[0],
+    base: deriveBase(r[0]),
     quote: "USD",
     quantityPrecision: 2,
   }),

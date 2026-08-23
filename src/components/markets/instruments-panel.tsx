@@ -36,6 +36,7 @@ import {
   filterByCategory,
   type InstrumentCategory,
 } from "@/lib/markets/catalog";
+import { InstrumentIcon } from "@/components/markets/instrument-icon";
 
 const FAVORITES_KEY = "lucian-markets-favorites";
 
@@ -80,18 +81,17 @@ function useFavorites() {
   return { favorites, toggle };
 }
 
-/* The reference terminal uses these chips in two rows:
-   Row 1: ★ All Forex Crypto Indices Metals
-   Row 2: Energies Intraday */
+/* Filter chips arranged in two clean rows, matching the reference:
+   Row 1: ★ All Forex Crypto Indices
+   Row 2: Metals Energies Intraday */
 const CHIP_ROW_1: InstrumentCategory[] = [
   "favorites",
   "all",
   "forex",
   "crypto",
   "indices",
-  "metals",
 ];
-const CHIP_ROW_2: InstrumentCategory[] = ["energies", "intraday"];
+const CHIP_ROW_2: InstrumentCategory[] = ["metals", "energies", "intraday"];
 
 const UP = "#4bfa8f";
 const DOWN = "#ff5b5b";
@@ -172,9 +172,9 @@ export function InstrumentsPanel({
         </div>
       </div>
 
-      {/* ── Filter chips (two rows) ── */}
+      {/* ── Filter chips (two clean rows) ── */}
       <div className="shrink-0 space-y-1 px-2.5 py-2">
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           {CHIP_ROW_1.map((cat) => (
             <Chip
               key={cat}
@@ -187,7 +187,7 @@ export function InstrumentsPanel({
             />
           ))}
         </div>
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           {CHIP_ROW_2.map((cat) => (
             <Chip
               key={cat}
@@ -288,25 +288,13 @@ export function InstrumentsPanel({
                       </button>
                     </span>
 
-                    {/* Icon badge */}
-                    <span
-                      className={cn(
-                        "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-bold",
-                        inst.category === "crypto"
-                          ? "bg-[#3a3a4f] text-fg"
-                          : inst.category === "forex"
-                          ? "bg-[#1f3a4a] text-[#7fb6cf]"
-                          : inst.category === "metals"
-                          ? "bg-[#3a2f1a] text-[#e0b870]"
-                          : inst.category === "indices"
-                          ? "bg-[#1a3a2a] text-[#7fcf9b]"
-                          : inst.category === "energies"
-                          ? "bg-[#3a1f1a] text-[#cf8b7f]"
-                          : "bg-[#2a2a3a] text-[#a5a5cf]",
-                      )}
-                    >
-                      {inst.badge}
-                    </span>
+                    {/* Instrument identity icon (researched per asset) */}
+                    <InstrumentIcon
+                      symbol={inst.symbol}
+                      base={inst.base}
+                      assetClass={inst.assetClass}
+                      badge={inst.badge}
+                    />
 
                     {/* Symbol + status */}
                     <div className="min-w-0 flex-1">
@@ -384,30 +372,45 @@ function Chip({
   onClick: () => void;
   favoritesCount?: number;
 }) {
-  const label = cat === "all" ? "All" : cat === "favorites" ? "★" : cap(cat);
+  /* Favorites chip: single neutral outline star only — no duplicate
+     star, no fill, no accent color even when active. Keeps the same
+     height and padding as the other chips so the strip stays uniform. */
+  if (cat === "favorites") {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label="Filter favorites"
+        title="Favorites"
+        className={cn(
+          "flex h-5 items-center justify-center gap-1 rounded px-2 text-[10px] font-medium transition-colors themed",
+          active
+            ? "bg-active text-fg"
+            : "bg-surface-2 text-fg-muted hover:bg-hover hover:text-fg",
+        )}
+      >
+        <Star className="h-3 w-3" />
+        {favoritesCount !== undefined && favoritesCount > 0 && (
+          <span className="text-[8px] text-fg-faint">({favoritesCount})</span>
+        )}
+      </button>
+    );
+  }
+
+  /* Standard text chip */
+  const label = cat === "all" ? "All" : cap(cat);
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors themed",
+        "flex h-5 items-center rounded px-2 text-[10px] font-medium transition-colors themed",
         active
           ? "bg-active text-fg"
           : "bg-surface-2 text-fg-muted hover:bg-hover hover:text-fg",
       )}
     >
-      {cat === "favorites" ? (
-        <Star
-          className={cn(
-            "h-2.5 w-2.5",
-            active && "fill-[var(--accent)] text-[var(--accent)]",
-          )}
-        />
-      ) : null}
-      <span>{label}</span>
-      {favoritesCount !== undefined && favoritesCount > 0 && (
-        <span className="text-[8px] text-fg-faint">({favoritesCount})</span>
-      )}
+      {label}
     </button>
   );
 }
