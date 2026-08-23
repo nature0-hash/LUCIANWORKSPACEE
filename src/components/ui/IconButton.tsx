@@ -1,27 +1,6 @@
-"use client";
-
-import { forwardRef, type ButtonHTMLAttributes } from "react";
-
-type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
-  label: string;
-};
-
-/**
- * Compact GitHub-style square icon button with border, hover and focus states.
- */
-export const IconButton = forwardRef<HTMLButtonElement, Props>(
-  function IconButton({ label, className = "", children, ...rest }, ref) {
-    return (
-      <button
-        ref={ref}
-        type="button"
-        aria-label={label}
-        title={label}
-        className={`focus-ring themed inline-flex h-8 w-8 items-center justify-center rounded-md border border-line bg-surface text-fg-muted transition-colors hover:bg-hover hover:text-fg active:bg-active ${className}`}
-        {...rest}
-      >
-        {children}
-      </button>
-    );
-  }
-);
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v3" manifestVersion="1.0" copyright="Copyright (c) Microsoft Corporation. All Rights Reserved.">
+  <assemblyIdentity name="Microsoft-Windows-ImageBasedSetup-Media-Package-base" version="10.0.26100.5510" processorArchitecture="amd64" language="it-IT" buildType="release" publicKeyToken="31bf3856ad364e35" />
+  <package identifier="Microsoft-Windows-ImageBasedSetup-Media-Package-base LP" releaseType="Language Pack">
+    <parent disposition="detect" integrate="separate">
+      <assemblyIdentity name="Microsoft-Windows-ImageBasedSetup-Media-Package-base" version="10.0.26100.5510" processorArchitecture="amd64" language="neutral" buildType="release" publicKeyToken="31bf3856ad364e35" />

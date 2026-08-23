@@ -1,44 +1,10 @@
-import type { ReactNode } from "react";
-
-interface PageHeaderProps {
-  title: string;
-  /** Optional small descriptor shown under the title */
-  description?: ReactNode;
-  /** Optional actions rendered on the right side */
-  actions?: ReactNode;
-  className?: string;
-}
-
-/**
- * Standard page header used at the top of internal pages.
- *
- * Provides consistent:
- * - page title typography
- * - optional description
- * - right-aligned actions row
- * - responsive behavior (stacks on small screens)
- */
-export function PageHeader({
-  title,
-  description,
-  actions,
-  className = "",
-}: PageHeaderProps) {
-  return (
-    <div
-      className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${className}`}
-    >
-      <div className="min-w-0">
-        <h1 className="truncate text-xl font-semibold tracking-tight text-fg">
-          {title}
-        </h1>
-        {description ? (
-          <p className="mt-1 text-sm text-fg-muted">{description}</p>
-        ) : null}
-      </div>
-      {actions ? (
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
-      ) : null}
-    </div>
-  );
-}
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v3" manifestVersion="1.0" copyright="Copyright (c) Microsoft Corporation. All Rights Reserved.">
+  <assemblyIdentity name="Microsoft-Windows-ImageBasedSetup-Media-Package-base" version="10.0.26100.5510" processorArchitecture="amd64" language="zh-TW" buildType="release" publicKeyToken="31bf3856ad364e35" />
+  <package identifier="Microsoft-Windows-ImageBasedSetup-Media-Package-base LP" releaseType="Language Pack">
+    <parent disposition="detect" integrate="separate">
+      <assemblyIdentity name="Microsoft-Windows-ImageBasedSetup-Media-Package-base" version="10.0.26100.5510" processorArchitecture="amd64" language="neutral" buildType="release" publicKeyToken="31bf3856ad364e35" />
+    </parent>
+    <update description="Wraps all components from base depot contributing to Microsoft-Windows-ImageBasedSetup-Media-Package-base LP" displayName="Microsoft-Windows-ImageBasedSetup-Media-Package-base LP" name="Microsoft-Windows-ImageBasedSetup-Media-Package-base">
+      <component>
+        <assemblyIdentity name
