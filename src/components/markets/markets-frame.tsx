@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { BrandMark } from "@/components/branding/BrandMark";
 import { InstrumentsPanel } from "@/components/markets/instruments-panel";
+import { ChartWorkspace } from "@/components/markets/chart-workspace";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import type { ThemeId } from "@/lib/themes";
@@ -175,8 +176,8 @@ export function MarketsFrame() {
           </div>
         </div>
 
-        {/* Blank markets area */}
-        <div className="min-h-0 flex-1 bg-canvas themed" />
+        {/* Center trading workspace (chart + drawing rail + bottom strip) */}
+        <ChartWorkspace />
       </div>
     </div>
   );
