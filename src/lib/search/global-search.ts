@@ -195,6 +195,68 @@ function searchBrowser(q: string): SearchResult[] {
   } catch { return []; }
 }
 
+function searchNotifications(q: string): SearchResult[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem("lucian-notifications"); if (!raw) return [];
+    const data = JSON.parse(raw); const results: SearchResult[] = [];
+    for (const n of data.notifications ?? []) {
+      if (n.title?.toLowerCase().includes(q) || n.message?.toLowerCase().includes(q))
+        results.push({ id: `ntf-${n.id}`, title: n.title, snippet: n.message, module: "notifications", moduleLabel: "Notifications", deepLink: n.deepLink });
+    }
+    return results.slice(0, 5);
+  } catch { return []; }
+}
+
+function searchVaultTransactions(q: string): SearchResult[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem("lucian-vault"); if (!raw) return [];
+    const data = JSON.parse(raw); const results: SearchResult[] = [];
+    for (const t of data.transactions ?? []) {
+      if (t.description?.toLowerCase().includes(q) || t.type?.toLowerCase().includes(q) || t.from?.toLowerCase().includes(q) || t.to?.toLowerCase().includes(q))
+        results.push({ id: `vtx-${t.id}`, title: t.description || `${t.type}: ${t.from} → ${t.to}`, snippet: `${t.type} · ${t.from} → ${t.to}`, module: "vault", moduleLabel: "Vault", deepLink: "/vault", timestamp: t.timestamp });
+    }
+    return results.slice(0, 5);
+  } catch { return []; }
+}
+
+function searchChess(q: string): SearchResult[] {
+  try {
+    const { CHESS_LESSONS } = require("@/lib/chess-data");
+    return CHESS_LESSONS.filter((l: { title: string; description: string; concept: string }) =>
+      l.title.toLowerCase().includes(q) || l.description.toLowerCase().includes(q) || l.concept.toLowerCase().includes(q)
+    ).slice(0, 5).map((l: { id: string; title: string; concept: string }) => ({
+      id: `chess-${l.id}`, title: l.title, snippet: l.concept, module: "chess-academy", moduleLabel: "Chess Academy", deepLink: "/chess-academy",
+    }));
+  } catch { return []; }
+}
+
+function searchDevWorkspace(q: string): SearchResult[] {
+  if (typeof window === "undefined") return [];
+  // DevWorkspace projects are in IndexedDB — async access is not practical
+  // in a synchronous search provider. We search project names from the
+  // workspace store's persisted state if available.
+  try {
+    const raw = localStorage.getItem("lucian-workspace-store");
+    if (!raw) return [];
+    const data = JSON.parse(raw);
+    const results: SearchResult[] = [];
+    for (const p of data?.state?.projects ?? []) {
+      if (p.name?.toLowerCase().includes(q)) {
+        results.push({ id: `dw-${p.id}`, title: p.name, snippet: `${p.fileCount ?? 0} files`, module: "dev-workspace", moduleLabel: "DevWorkspace", deepLink: "/dev-workspace" });
+      }
+      // Search filenames
+      for (const f of p.files ?? []) {
+        if (f.path?.toLowerCase().includes(q) || f.name?.toLowerCase().includes(q)) {
+          results.push({ id: `dwf-${p.id}-${f.path}`, title: f.name || f.path, snippet: `File in ${p.name}`, module: "dev-workspace", moduleLabel: "DevWorkspace", deepLink: "/dev-workspace" });
+        }
+      }
+    }
+    return results.slice(0, 5);
+  } catch { return []; }
+}
+
 // Register all providers
 registerSearchProvider(searchNavigation);
 registerSearchProvider(searchNotes);
@@ -206,3 +268,7 @@ registerSearchProvider(searchNewsFeed);
 registerSearchProvider(searchKnowledgeLibrary);
 registerSearchProvider(searchVault);
 registerSearchProvider(searchBrowser);
+registerSearchProvider(searchNotifications);
+registerSearchProvider(searchVaultTransactions);
+registerSearchProvider(searchChess);
+registerSearchProvider(searchDevWorkspace);

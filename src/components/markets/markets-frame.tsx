@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import type { ThemeId } from "@/lib/themes";
 import { useMarketsStore } from "@/store/markets";
+import { useVaultStore } from "@/store/vault";
+import { toast } from "@/hooks/use-toast";
 
 /* ------------------------------------------------------------------ */
 /* Theme-aware tokens                                                  */
@@ -43,14 +45,44 @@ const TOGGLE_BASE = "text-fg-faint hover:bg-hover hover:text-fg themed";
 
 export function MarketsFrame() {
   const { theme, setTheme } = useTheme();
-  // panelOpen = is the left contextual area visible at all?
-  // leftPanelMode = which view (Instruments | OrderDetails) is shown when open.
   const [panelOpen, setPanelOpen] = useState(true);
   const leftPanelMode = useMarketsStore((s) => s.leftPanelMode);
   const setLeftPanelMode = useMarketsStore((s) => s.setLeftPanelMode);
   const setToggleInstrumentsHandler = useMarketsStore(
     (s) => s.setToggleInstrumentsHandler,
   );
+  const mode = useMarketsStore((s) => s.mode);
+  const setMode = useMarketsStore((s) => s.setMode);
+  const account = useMarketsStore((s) => s.account);
+  const refreshAccount = useMarketsStore((s) => s.refreshAccount);
+  const refreshTrading = useMarketsStore((s) => s.refreshTrading);
+
+  // Format currency for account display
+  const fmt = (n: number) =>
+    n.toLocaleString("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+  // Account values from paper-trading engine
+  const balance = account?.balance ?? 0;
+  const equity = account?.equity ?? 0;
+  const margin = account?.margin ?? 0;
+  const freeMargin = account?.freeMargin ?? 0;
+  const marginLevel = account?.marginLevel ?? 0;
+  const floatingPnl = account?.floatingPnl ?? 0;
+  const pnlColor = floatingPnl > 0 ? "text-[#089981]" : floatingPnl < 0 ? "text-[#f23645]" : "text-fg";
+
+  // Handle Deposit/Withdraw/Transfer — no real financial provider
+  const showProviderRequired = (action: string) => {
+    toast({
+      title: `${action} — Financial Provider Required`,
+      description: "This action requires a connected financial provider. Provider integration is not yet available.",
+      variant: "destructive",
+    });
+  };
 
   // ChartWorkspace lifts pending-order price up here so OrderDetails can
   // update the chart's pending-order line via this callback.
@@ -126,10 +158,13 @@ export function MarketsFrame() {
           active={panelOpen && leftPanelMode === "instruments"}
           onClick={handleRailInstrumentsClick}
         />
-        <RailBtn icon={ArrowDownToLine} label="Deposit" />
-        <RailBtn icon={ArrowUpFromLine} label="Withdraw" />
-        <RailBtn icon={ArrowLeftRight} label="Transfer" />
-        <RailBtn icon={History} label="Operation History" twoLine />
+        <RailBtn icon={ArrowDownToLine} label="Deposit" onClick={() => showProviderRequired("Deposit")} />
+        <RailBtn icon={ArrowUpFromLine} label="Withdraw" onClick={() => showProviderRequired("Withdraw")} />
+        <RailBtn icon={ArrowLeftRight} label="Transfer" onClick={() => showProviderRequired("Transfer")} />
+        <RailBtn icon={History} label="Operation History" twoLine onClick={() => {
+          refreshTrading();
+          toast({ title: "Trading history refreshed", description: `${useMarketsStore.getState().positions.length} open, ${useMarketsStore.getState().closedPositions.length} closed` });
+        }} />
 
         {/* Spacer pushes the toggle to the bottom */}
         <div className="flex-1" />
@@ -202,25 +237,26 @@ export function MarketsFrame() {
 
           {/* Push account-information group toward the right, near Deposit */}
           <div className="ml-auto flex items-center gap-4">
-            {/* Account metrics in screenshot order */}
-            <Metric label="Margin" value="$0.00" />
-            <Metric label="Free margin" value="$0.00" />
-            <Metric label="Margin level" value="0.00%" />
-            <Metric label="Equity" value="$0.00" />
-            <Metric label="Floating profit" value="$0.00" />
+            {/* Account metrics from paper-trading engine */}
+            <Metric label="Margin" value={fmt(margin)} />
+            <Metric label="Free margin" value={fmt(freeMargin)} />
+            <Metric label="Margin level" value={marginLevel > 0 ? `${marginLevel.toFixed(2)}%` : "0.00%"} />
+            <Metric label="Equity" value={fmt(equity)} />
+            <Metric label="Floating profit" value={fmt(floatingPnl)} />
 
             {/* Separator between numeric metrics and Virtual/Real */}
             <div className="h-5 w-px bg-line-muted" />
 
-            {/* Virtual — single, label-over-value, green accent */}
-            <AccountPill label="Virtual" value="$0.00" accent="green" />
+            {/* Virtual — shows paper balance */}
+            <AccountPill label="Virtual" value={fmt(balance)} accent="green" />
 
-            {/* Real — single, label-over-value, blue accent */}
-            <AccountPill label="Real" value="$0.00" accent="blue" />
+            {/* Real — not connected */}
+            <AccountPill label="Real" value="Not connected" accent="blue" />
 
-            {/* Deposit button — far right, stays where it is */}
+            {/* Deposit button — far right */}
             <button
               type="button"
+              onClick={() => showProviderRequired("Deposit")}
               className="rounded-[6px] bg-[var(--accent)] px-5 py-1.5 text-[12px] font-semibold text-[var(--accent-fg)] shadow-sm transition-colors hover:bg-[var(--accent-hover)] themed"
             >
               Deposit

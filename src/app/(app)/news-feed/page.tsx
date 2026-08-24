@@ -803,11 +803,8 @@ function WatchTab() {
         <Play className="mx-auto h-12 w-12 text-fg-faint opacity-30" />
         <p className="mt-3 text-[14px] font-medium text-fg-muted">Video Provider Setup Required</p>
         <p className="mt-1 max-w-sm text-[12px] text-fg-faint">
-          Connect a video provider (YouTube Data API) to enable real video news content.
-          No fake videos are shown.
-        </p>
-        <p className="mt-2 text-[10px] text-fg-faint">
-          Set <code className="font-mono">YOUTUBE_API_KEY</code> in your Vercel environment.
+          The Watch feed requires a video-provider integration.
+          This integration has not been enabled yet.
         </p>
       </div>
     </div>
