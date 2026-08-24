@@ -1,27 +1,19 @@
 import { NextResponse } from "next/server";
-import { execFile } from "node:child_process";
-import { readFile, unlink, mkdir } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { promisify } from "node:util";
+import { getProvider, type ChatMessage } from "@/lib/agent/providers";
+import type { ProviderId } from "@/store/economic-agent-connection";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const execFileAsync = promisify(execFile);
-
 interface ChatRequestBody {
   messages: { role: string; content: string }[];
-  modelSelection: string;
+  provider: ProviderId;
+  model: string;
   contextItems?: {
     type: string;
     label: string;
     description?: string;
   }[];
-}
-
-interface ZaiChatResponse {
-  choices?: { message?: { content?: string } }[];
 }
 
 export async function POST(req: Request) {
@@ -35,7 +27,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const { messages, contextItems } = body;
+  const { messages, provider, model, contextItems } = body;
+
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json(
       { content: "No messages provided.", fromModel: false, error: "no_messages" },
@@ -43,6 +36,7 @@ export async function POST(req: Request) {
     );
   }
 
+  // Build system prompt.
   const systemPromptLines = [
     "You are the LUCIAN Economic Agent — a multi-purpose AI assistant for the LUCIAN Workspace platform.",
     "You help with: economic analysis, investment research, project development, market intelligence, business ideas, and general questions.",
@@ -63,51 +57,40 @@ export async function POST(req: Request) {
 
   const systemPrompt = systemPromptLines.join("\n");
 
-  // Build user prompt from recent messages (last 10).
-  const recent = messages.slice(-10);
-  const userPrompt =
-    recent
-      .map((m) => `${m.role === "user" ? "User" : "Economic Agent"}: ${m.content}`)
-      .join("\n\n") + "\nEconomic Agent:";
+  // Look up the provider adapter. API keys are read from process.env
+  // server-side — never sent to the client.
+  const adapter = getProvider(provider);
+  if (!adapter) {
+    return NextResponse.json({
+      content:
+        "No AI provider configured. Open Settings → Lilith → Economic Agent Connection to connect a provider, or ask your administrator to set the required environment variable on Vercel.",
+      fromModel: false,
+      error: "provider_not_configured",
+    });
+  }
 
-  const outDir = join(tmpdir(), "lucian-economic-agent");
-  await mkdir(outDir, { recursive: true });
-  const outFile = join(
-    outDir,
-    `chat_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.json`,
-  );
+  // Convert messages to the provider format.
+  const chatMessages: ChatMessage[] = messages.map((m) => ({
+    role: (m.role === "assistant" ? "assistant" : "user") as ChatMessage["role"],
+    content: m.content,
+  }));
 
   try {
-    await execFileAsync(
-      "z-ai",
-      ["chat", "--prompt", userPrompt, "--system", systemPrompt, "--output", outFile],
-      { timeout: 30_000, maxBuffer: 1024 * 1024, env: { ...process.env } },
-    );
-    const raw = await readFile(outFile, "utf8");
-    const parsed = JSON.parse(raw) as ZaiChatResponse;
-    const content = parsed.choices?.[0]?.message?.content?.trim() ?? "";
-    if (!content) {
-      return NextResponse.json({
-        content: "I didn't catch that. Could you rephrase?",
-        fromModel: false,
-      });
-    }
-    return NextResponse.json({ content, fromModel: true });
-  } catch {
+    const result = await adapter.chat({
+      messages: chatMessages,
+      model: model || "gpt-4o-mini",
+      systemPrompt,
+    });
+    return NextResponse.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
       {
-        content:
-          "I'm having trouble connecting to the model provider. Please try again in a moment.",
+        content: `The AI provider returned an error: ${message}`,
         fromModel: false,
-        error: "provider_unavailable",
+        error: "provider_error",
       },
       { status: 502 },
     );
-  } finally {
-    try {
-      await unlink(outFile);
-    } catch {
-      /* ignore */
-    }
   }
 }

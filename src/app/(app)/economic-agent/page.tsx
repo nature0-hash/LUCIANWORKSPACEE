@@ -36,6 +36,7 @@ import {
   type ContextItem,
   type ModelSelection,
 } from "@/store/economic-agent";
+import { useEconomicAgentConnection, getProviderInfo } from "@/store/economic-agent-connection";
 import { cn } from "@/lib/utils";
 
 /* ────────────────────────────────────────────────────────────────── */
@@ -726,6 +727,8 @@ function AgentComposer({ mode }: { mode: "welcome" | "conversation" }) {
   const contextItems = useEconomicAgentStore((s) => s.contextItems);
   const clearContext = useEconomicAgentStore((s) => s.clearContext);
   const modelSelection = useEconomicAgentStore((s) => s.modelSelection);
+  const connectionProvider = useEconomicAgentConnection((s) => s.provider);
+  const connectionModel = useEconomicAgentConnection((s) => s.model);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-expand textarea up to a max height.
@@ -758,7 +761,8 @@ function AgentComposer({ mode }: { mode: "welcome" | "conversation" }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [{ role: "user", content: text }],
-          modelSelection,
+          provider: connectionProvider,
+          model: connectionModel,
           contextItems,
         }),
       });
@@ -787,7 +791,8 @@ function AgentComposer({ mode }: { mode: "welcome" | "conversation" }) {
     addMessage,
     setDraftText,
     setBusy,
-    modelSelection,
+    connectionProvider,
+    connectionModel,
     contextItems,
     clearContext,
   ]);

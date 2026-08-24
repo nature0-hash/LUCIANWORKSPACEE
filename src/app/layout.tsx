@@ -18,14 +18,22 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Lucian — Workspace",
   description:
-    "Lucian Workspace — a clean, themeable workspace foundation with a GitHub-inspired layout.",
+    "Lucian Workspace — a clean, themeable workspace foundation with markets, vault, AI agent, and more.",
   applicationName: "Lucian Workspace",
+  manifest: "/manifest.json",
   icons: {
     icon: [
       { url: "/icon.png", type: "image/png" },
       { url: "/branding/icon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/branding/lucian-workspace-icon.png", sizes: "192x192", type: "image/png" },
+      { url: "/branding/lucian-workspace-icon.png", sizes: "512x512", type: "image/png" },
     ],
     apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Lucian",
   },
 };
 
@@ -36,6 +44,8 @@ export const viewport: Viewport = {
   ],
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 /**
@@ -93,6 +103,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: bootstrapScript }} />
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Lucian" />
+        <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className="antialiased">
         <ThemeProvider>
@@ -115,6 +130,19 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             }}
           />
         </ThemeProvider>
+        {/* Service worker registration — only in production to avoid
+            caching issues during development. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator && '${process.env.NODE_ENV}' === 'production') {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').catch(function() {});
+                });
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   );

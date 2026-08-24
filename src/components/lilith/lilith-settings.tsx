@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Save,
   Check,
+  Plug,
 } from "lucide-react";
 import {
   useLilithStore,
@@ -25,6 +26,7 @@ import {
   type LilithColorId,
   type LilithSize,
 } from "@/store/lilith";
+import { EconomicAgentConnection } from "@/components/lilith/economic-agent-connection";
 import { cn } from "@/lib/utils";
 
 export function LilithSettings() {
@@ -296,6 +298,11 @@ export function LilithSettings() {
             </button>
           ))}
         </div>
+      </SettingsSection>
+
+      {/* ── Economic Agent Connection ── */}
+      <SettingsSection icon={Plug} title="Economic Agent Connection">
+        <EconomicAgentConnection />
       </SettingsSection>
 
       {/* ── Reset ── */}
