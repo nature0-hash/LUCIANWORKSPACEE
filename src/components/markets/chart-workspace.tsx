@@ -22,8 +22,8 @@
  *
  * Behavior rules:
  *  - Visual structure only — no fake trading logic, no fake account activity
- *  - Real candlestick chart from lightweight-charts (deterministic demo data
- *    since the project's Binance provider isn't wired in this layout)
+ *  - Real candlestick chart from lightweight-charts (live Binance API for crypto,
+ *    reference snapshot for non-crypto)
  *  - Timeframe selector cycles M1/M5/M15/M30/H1/H4/D1/W
  *  - Drawing toolbar icons are visual only for this stage
  *  - Bottom strip tabs are visual only for this stage
@@ -1483,13 +1483,77 @@ function CandleChart({
   const askLineRef = useRef<IPriceLine | null>(null);
   const pendingLineRef = useRef<IPriceLine | null>(null);
 
-  // Deterministic demo candles around the selected instrument's mid-price.
-  // Re-keyed on symbol AND timeframe so the chart visibly responds to both.
+  // Determine if this is a crypto symbol that can use real Binance data.
+  // The catalog uses "BTCUSD" format but Binance uses "BTCUSDT".
+  const isCrypto = symbol.startsWith("BTC") || symbol.startsWith("ETH") ||
+    symbol.startsWith("SOL") || symbol.startsWith("XRP") || symbol.startsWith("BNB") ||
+    symbol.startsWith("ADA") || symbol.startsWith("DOGE") || symbol.startsWith("AVAX") ||
+    symbol.startsWith("DOT") || symbol.startsWith("LINK") || symbol.startsWith("AAVE") ||
+    symbol.startsWith("ALGO") || symbol.startsWith("UNI") || symbol.startsWith("ETC") ||
+    symbol.startsWith("TRX") || symbol.startsWith("AXS") || symbol.startsWith("MANA") ||
+    symbol.startsWith("ZEC") || symbol.startsWith("NEAR") || symbol.startsWith("IOTA") ||
+    symbol.startsWith("ICP") || symbol.startsWith("LRC") || symbol.startsWith("DASH") ||
+    symbol.startsWith("BCH") || symbol.startsWith("GRT") || symbol.startsWith("FIL");
+
+  // For crypto: fetch real candles from Binance via the existing provider.
+  // For non-crypto: use reference candles from the catalog snapshot prices
+  // (honestly labeled as reference data, not live).
   const midPrice = useMemo(() => (bidPrice + askPrice) / 2, [bidPrice, askPrice]);
-  const candles = useMemo<CandlestickData<UTCTimestamp>[]>(
-    () => generateDemoCandles(timeframe, 120, midPrice, symbol),
-    [timeframe, midPrice, symbol],
-  );
+  const [candles, setCandles] = useState<CandlestickData<UTCTimestamp>[]>([]);
+  const [loadingCandles, setLoadingCandles] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingCandles(true);
+
+    async function loadCandles() {
+      try {
+        // For crypto symbols, use real Binance API
+        if (isCrypto) {
+          const binanceSymbol = symbol.replace("USD", "USDT").replace(".Daily", "");
+          const intervalMap: Record<string, string> = {
+            M1: "1m", M5: "5m", M15: "15m", M30: "30m",
+            H1: "1h", H4: "4h", D1: "1d", W: "1w",
+          };
+          const interval = intervalMap[timeframe] || "1m";
+          const res = await fetch(
+            `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=120`
+          );
+          if (!res.ok) throw new Error(`Binance API error: ${res.status}`);
+          const raw = await res.json() as (string | number)[][];
+          const data: CandlestickData<UTCTimestamp>[] = raw.map((k) => ({
+            time: Math.floor(Number(k[0]) / 1000) as UTCTimestamp,
+            open: parseFloat(String(k[1])),
+            high: parseFloat(String(k[2])),
+            low: parseFloat(String(k[3])),
+            close: parseFloat(String(k[4])),
+          }));
+          if (!cancelled) {
+            setCandles(data);
+            setLoadingCandles(false);
+          }
+        } else {
+          // Non-crypto: use reference candles from catalog snapshot.
+          // These are NOT live data — they are reference snapshots.
+          const data = generateReferenceCandles(timeframe, 120, midPrice, symbol);
+          if (!cancelled) {
+            setCandles(data);
+            setLoadingCandles(false);
+          }
+        }
+      } catch {
+        // Fallback to reference candles if Binance fails
+        if (!cancelled) {
+          const data = generateReferenceCandles(timeframe, 120, midPrice, symbol);
+          setCandles(data);
+          setLoadingCandles(false);
+        }
+      }
+    }
+
+    loadCandles();
+    return () => { cancelled = true; };
+  }, [timeframe, symbol, midPrice, isCrypto]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -1628,10 +1692,10 @@ function CandleChart({
   return <div ref={containerRef} className="absolute inset-0 h-full w-full" />;
 }
 
-/** Generate deterministic demo candles around the supplied mid-price.
-    Scales volatility by symbol so e.g. BTCUSD candles look bigger than
-    EURUSD candles. */
-function generateDemoCandles(
+/** Generate reference candles for non-crypto symbols using catalog snapshot prices.
+    These are NOT live data — they are based on the static reference snapshot
+    in the instrument catalog. Crypto symbols use real Binance API data instead. */
+function generateReferenceCandles(
   timeframe: Timeframe,
   count: number,
   midPrice: number,

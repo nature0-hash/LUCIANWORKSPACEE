@@ -1386,8 +1386,8 @@ function SecurityTab() {
 
       {/* Funding / Provider status */}
       <SettingsSection title="Funding / Provider Status" icon={Link2}>
-        <ProviderStatusRow label="Banking sources" status="No real provider connected" />
-        <ProviderStatusRow label="Crypto wallets" status="MetaMask (demo)" />
+        <ProviderStatusRow label="Banking sources" status="Not connected" />
+        <ProviderStatusRow label="Crypto wallets" status="Not connected" />
         <ProviderStatusRow label="Card providers" status="Not connected" />
         <ProviderStatusRow label="Brokerage" status="Not connected" />
       </SettingsSection>
@@ -1519,7 +1519,7 @@ function AddAccountDialog({
       balance: Number(balance) || 0,
       currency: "USD",
     });
-    toast({ title: "Account connected", description: `${label} has been added to Vault.` });
+    toast({ title: "Manual account added", description: `${label} has been added as a self-reported manual account. Balances are not provider-verified.` });
     setLabel("");
     setProvider("");
     setMaskedId("");
@@ -1531,9 +1531,12 @@ function AddAccountDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Connect Account</DialogTitle>
+          <DialogTitle>Add Manual Account</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
+          <div className="rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
+            Manual accounts use self-reported balances. They are not connected to a real financial provider and are not provider-verified.
+          </div>
           <div>
             <Label>Account label</Label>
             <Input

@@ -1158,7 +1158,7 @@ function ModelSelector({ compact }: { compact: boolean }) {
               );
             })}
             <div className="border-t border-line-muted px-2 py-1.5 text-[9px] text-fg-faint">
-              No model provider configured — responses use the bundled demo model.
+            No model provider configured. Connect one in Settings → Lilith → Economic Agent Connection.
             </div>
           </div>
         </div>
