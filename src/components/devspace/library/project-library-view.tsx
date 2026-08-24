@@ -639,7 +639,7 @@ function ScanChecklistDialog({
                 {scan.services.map((s) => (
                   <div
                     key={s.name}
-                    className="flex items-center justify-between rounded-md border p-2"
+                    className="flex items-center justify-between rounded-md border border-border/50 p-2"
                   >
                     <div className="flex items-center gap-2">
                       {s.configured ? (
@@ -684,7 +684,7 @@ function ScanChecklistDialog({
                 {scan.envVars.map((e) => (
                   <div
                     key={e.key}
-                    className="flex items-center justify-between rounded-md border px-2 py-1.5"
+                    className="flex items-center justify-between rounded-md border border-border/50 px-2 py-1.5"
                   >
                     <div className="flex items-center gap-2">
                       {e.configured ? (
@@ -722,7 +722,7 @@ function ScanChecklistDialog({
 
           {/* Empty state */}
           {scan.services.length === 0 && scan.envVars.length === 0 && (
-            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+            <div className="rounded-md border border-dashed border-muted/40 p-6 text-center text-sm text-muted-foreground">
               <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-emerald-500" />
               No external services or env vars detected. This project appears to be self-contained.
             </div>

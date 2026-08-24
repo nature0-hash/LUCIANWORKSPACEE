@@ -153,7 +153,7 @@ export function StyleInspector({ node, entryFile, onPatched }: StyleInspectorPro
   return (
     <div className="space-y-3 p-3 text-xs">
       {/* Element header */}
-      <div className="rounded-md border bg-muted/40 px-2 py-1.5">
+      <div className="rounded-md border border-border/50 bg-muted/40 px-2 py-1.5">
         <div className="flex items-center justify-between">
           <code className="font-mono text-[11px]">{node.tag}</code>
           <code className="text-[10px] text-muted-foreground">#{node.id}</code>

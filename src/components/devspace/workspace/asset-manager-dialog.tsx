@@ -156,7 +156,7 @@ export function AssetManagerDialog({ open, onOpenChange }: Props) {
                   <div
                     key={file.path}
                     className={cn(
-                      "group flex flex-col overflow-hidden rounded-lg border bg-card transition-all hover:shadow-md",
+                      "group flex flex-col overflow-hidden rounded-lg border border-border/50 bg-card transition-all hover:shadow-md",
                       recentlyReplaced === file.path && "ring-2 ring-emerald-500",
                     )}
                   >

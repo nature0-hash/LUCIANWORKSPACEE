@@ -213,7 +213,7 @@ export function PreviewPane() {
         </div>
 
         <div className="flex items-center gap-1">
-          <div className="mr-2 hidden items-center rounded-md border bg-background p-0.5 lg:flex">
+          <div className="mr-2 hidden items-center rounded-md border border-border/50 bg-background p-0.5 lg:flex">
             <DeviceButton device="desktop" current={device} onSelect={setDevice} icon={Monitor} />
             <DeviceButton device="tablet" current={device} onSelect={setDevice} icon={Tablet} />
             <DeviceButton device="mobile" current={device} onSelect={setDevice} icon={Smartphone} />
@@ -266,7 +266,7 @@ export function PreviewPane() {
       <div className="flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-900">
         <div
           className={cn(
-            "relative mx-auto my-4 bg-white shadow-lg transition-all duration-200",
+            "relative mx-auto my-4 bg-background shadow-lg transition-all duration-200",
             isDesktop ? "w-full" : "rounded-2xl border-4 border-zinc-800",
           )}
           style={{
@@ -287,7 +287,7 @@ export function PreviewPane() {
             title="live-preview"
             srcDoc={previewDoc}
             sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin"
-            className="h-full w-full border-0 bg-white"
+            className="h-full w-full border-0 bg-background"
             onLoad={() => setLoading(false)}
           />
         </div>

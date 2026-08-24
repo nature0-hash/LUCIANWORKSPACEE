@@ -7,13 +7,12 @@
 import { FolderOpen } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { Button } from "@/components/ui-devspace/button";
-import { Card } from "@/components/ui-devspace/card";
 
 export function WorkspaceEmptyState() {
   const setView = useWorkspaceStore((s) => s.setView);
   return (
     <div className="flex h-full items-center justify-center p-8">
-      <Card className="flex max-w-md flex-col items-center justify-center gap-4 p-12 text-center">
+      <div className="flex max-w-md flex-col items-center justify-center gap-4 p-12 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
           <FolderOpen className="h-8 w-8 text-muted-foreground" />
         </div>
@@ -26,7 +25,7 @@ export function WorkspaceEmptyState() {
         <Button onClick={() => setView("library")}>
           <FolderOpen className="mr-2 h-4 w-4" /> Go to Project Library
         </Button>
-      </Card>
+      </div>
     </div>
   );
 }

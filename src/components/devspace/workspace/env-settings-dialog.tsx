@@ -72,7 +72,7 @@ export function EnvSettingsDialog({ open, onOpenChange }: Props) {
 
         <div className="space-y-2 max-h-[50vh] overflow-y-auto">
           {vars.length === 0 && (
-            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+            <div className="rounded-md border border-dashed border-muted/40 p-6 text-center text-sm text-muted-foreground">
               No variables yet. Click &quot;Add Variable&quot; below.
             </div>
           )}

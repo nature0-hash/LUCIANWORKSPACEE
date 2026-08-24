@@ -302,7 +302,7 @@ export function CodeConverterView() {
 
         {/* Direction switcher */}
         <div className="mb-6 flex items-center justify-center">
-          <div className="inline-flex items-center rounded-lg border bg-card p-1">
+          <div className="inline-flex items-center rounded-lg border border-border/50 bg-card p-1">
             <Button
               variant={direction === "project-to-code" ? "default" : "ghost"}
               size="sm"
@@ -453,7 +453,7 @@ function ProjectToCodePanel(props: ProjectToCodeProps) {
           {/* Output format */}
           <div className="space-y-2">
             <Label>Output format</Label>
-            <div className="flex gap-1 rounded-md border bg-background p-0.5">
+            <div className="flex gap-1 rounded-md border border-border/50 bg-background p-0.5">
               {(Object.keys(STYLE_LABELS) as PackStyle[]).map((style) => (
                 <button
                   key={style}
@@ -581,7 +581,7 @@ function OptionToggle({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md border px-2.5 py-1.5">
+    <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-border/50 px-2.5 py-1.5">
       <span className="text-xs">{label}</span>
       <Switch checked={checked} onCheckedChange={onChange} className="scale-75" />
     </label>
@@ -675,7 +675,7 @@ function CodeToProjectPanel(props: CodeToProjectProps) {
             )}
 
             {/* Tree preview */}
-            <div className="rounded-md border bg-muted/30 p-3">
+            <div className="rounded-md border border-border/50 bg-muted/30 p-3">
               <pre className="overflow-auto font-mono text-xs leading-relaxed">
                 {buildReconstructionPreview(props.reconstruction.files)}
               </pre>

@@ -225,7 +225,7 @@ export function CodeEditorPane() {
               <img
                 src={cached}
                 alt={fileEntry.path}
-                className="max-h-[70vh] max-w-full rounded-lg border bg-white shadow-sm"
+                className="max-h-[70vh] max-w-full rounded-lg border border-border/50 bg-background shadow-sm"
               />
               <div className="text-center text-sm text-muted-foreground">
                 <p className="font-mono">{fileEntry.path}</p>

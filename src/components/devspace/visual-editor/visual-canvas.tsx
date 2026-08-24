@@ -192,14 +192,14 @@ export function VisualCanvas({
               transform: `scale(${zoom})`,
               transformOrigin: "top center",
             }}
-            className="h-full max-h-[2000px] rounded-md border bg-white shadow-lg"
+            className="h-full max-h-[2000px] rounded-md border border-border/50 bg-background shadow-lg"
           >
             <iframe
               ref={iframeRef}
               title="visual-editor-canvas"
               srcDoc={srcDoc}
               onLoad={handleIframeLoad}
-              className="h-full w-full border-0 bg-white"
+              className="h-full w-full border-0 bg-background"
               sandbox="allow-scripts allow-same-origin"
             />
           </div>

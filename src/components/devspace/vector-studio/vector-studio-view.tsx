@@ -635,7 +635,7 @@ function PreviewArea({
             )}
             {showVector && result ? (
               <div
-                className="max-h-[600px] max-w-[600px] overflow-hidden bg-white"
+                className="max-h-[600px] max-w-[600px] overflow-hidden bg-background"
                 // The SVG string is rendered as inline HTML inside a div
                 // — React doesn't parse SVG strings as JSX, so we use
                 // dangerouslySetInnerHTML with the traced SVG.
@@ -643,7 +643,7 @@ function PreviewArea({
               />
             ) : null}
             {showVector && !result ? (
-              <div className="flex max-h-[600px] max-w-[600px] items-center justify-center bg-white p-12 text-sm text-zinc-400">
+              <div className="flex max-h-[600px] max-w-[600px] items-center justify-center bg-background p-12 text-sm text-zinc-400">
                 Click Trace to generate
               </div>
             ) : null}

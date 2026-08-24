@@ -114,7 +114,7 @@ export function WorkspaceToolbar() {
 
       <div className="flex items-center gap-1">
         {/* Device toggle */}
-        <div className="hidden items-center rounded-md border bg-background p-0.5 md:flex">
+        <div className="hidden items-center rounded-md border border-border/50 bg-background p-0.5 md:flex">
           {DEVICES.map((d) => {
             const Icon = d.icon;
             return (

@@ -295,7 +295,7 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
               {viewing?.files.length ?? 0} files
             </DialogDescription>
           </DialogHeader>
-          <div className="flex-1 overflow-hidden rounded-lg border bg-white">
+          <div className="flex-1 overflow-hidden rounded-lg border border-border/50 bg-background">
             {viewing && (
               <iframe
                 title="version-preview"
