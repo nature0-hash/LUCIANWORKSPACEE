@@ -25,6 +25,7 @@
     "@radix-ui/react-toast": "^1.2.23",
     "@types/file-saver": "^2.0.7",
     "@webcontainer/api": "^1.6.4",
+    "chess.js": "^1.4.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "fflate": "^0.8.3",
