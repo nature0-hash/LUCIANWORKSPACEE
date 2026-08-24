@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, ChevronRight, Bell, Bot, FileText, Plus, PieChart, Newspaper, FlaskConical } from "lucide-react";
 import { useNotificationStore } from "@/store/notifications";
@@ -22,6 +22,20 @@ export default function HomePage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [recentItems, setRecentItems] = useState<RecentItem[]>([]);
+
+  // Hydration-safe date/greeting — computed only after mount so the
+  // server and client render the same initial markup.
+  const [dateStr, setDateStr] = useState("");
+  const [greeting, setGreeting] = useState("");
+
+  useEffect(() => {
+    const now = new Date();
+    const ds = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+    const hour = now.getHours();
+    const g = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+    setDateStr(ds);
+    setGreeting(g);
+  }, []);
 
   // Load recent activity from localStorage
   useEffect(() => {
@@ -77,14 +91,18 @@ export default function HomePage() {
     setRecentItems(items.slice(0, 5));
   }, []);
 
-  // Date + greeting
-  const now = new Date();
-  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-  const hour = now.getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  // Notifications — select the raw notifications array (stable reference)
+  // then derive urgentUnread with useMemo. Calling s.urgentUnread()
+  // inside the selector would create a new array every render → infinite loop.
+  const notifications = useNotificationStore((s) => s.notifications);
 
-  // Notifications (Needs Attention)
-  const urgentUnread = useNotificationStore((s) => s.urgentUnread());
+  const urgentUnread = useMemo(
+    () =>
+      notifications.filter(
+        (n) => !n.read && (n.priority === "high" || n.priority === "urgent"),
+      ),
+    [notifications],
+  );
 
   const quickActions = [
     { label: "New Chat", icon: Bot, path: "/economic-agent" },

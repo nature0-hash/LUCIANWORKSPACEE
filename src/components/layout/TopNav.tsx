@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bell, Menu, Search } from "lucide-react";
@@ -34,7 +34,14 @@ export function TopNav({ onOpenSettings }: TopNavProps) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
 
-  const unreadCount = useNotificationStore((s) => s.unreadCount());
+  // Select raw notifications array (stable reference) then derive count
+  // with useMemo. Calling s.unreadCount() inside the selector creates a new
+  // value every render → infinite loop in Zustand 5.
+  const notifications = useNotificationStore((s) => s.notifications);
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.read).length,
+    [notifications],
+  );
 
   // Global keyboard shortcuts: / and Ctrl+K
   useEffect(() => {

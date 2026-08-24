@@ -12,7 +12,7 @@
  *   - Everything else: network-first with cache fallback
  */
 
-const CACHE_NAME = "lucian-workspace-v1";
+const CACHE_NAME = "lucian-workspace-v2";
 const APP_SHELL = [
   "/",
   "/markets",
