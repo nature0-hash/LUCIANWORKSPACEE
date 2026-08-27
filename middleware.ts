@@ -1,0 +1,94 @@
+// LUCIAN Phase 16 — Route protection middleware.
+//
+// Auth.js v5 uses the `auth` middleware factory. We export the wrapped
+// middleware that:
+//   1. Lets /api/auth/* and public technical routes pass through.
+//   2. Redirects unauthenticated users from private LUCIAN routes to
+//      /login (preserving the original URL as callbackUrl).
+//   3. Redirects authenticated users from /login / /signup /
+//      /forgot-password back to / (Home) — unless they explicitly
+//      request the recovery page via ?redirect=reset.
+//
+// Avoid redirect loops by maintaining a clear matcher + per-route logic.
+
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth/auth";
+
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/api/auth",
+  "/api/health",
+];
+
+const AUTH_PAGES = new Set(["/login", "/signup", "/forgot-password", "/reset-password"]);
+
+function isPathUnderPrefix(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(prefix + "/");
+}
+
+export default auth((req) => {
+  const { pathname, search } = req.nextUrl;
+  // CRITICAL: must check req.auth?.user?.id (NOT just req.auth) because
+  // the session() callback in auth.ts returns a session object even
+  // when the JWT is stale (sessionVersion mismatch) — it clears
+  // session.user.id to signal "unauthenticated". Checking only req.auth
+  // would let stale JWTs through.
+  const isAuthed = !!req.auth?.user?.id;
+  const isApi = pathname.startsWith("/api/") && !pathname.startsWith("/api/auth/") && !pathname.startsWith("/api/health");
+
+  // Public technical routes (OAuth callbacks, webhooks, health) — always pass.
+  if (
+    isPathUnderPrefix(pathname, "/api/auth") ||
+    isPathUnderPrefix(pathname, "/api/health") ||
+    isPathUnderPrefix(pathname, "/api/vault/webhooks")
+  ) {
+    return NextResponse.next();
+  }
+
+  // Auth pages — redirect authed users to Home unless they're actively
+  // performing a recovery (we look at the search string for `?token=`
+  // on /reset-password so deep links to a reset don't bounce).
+  if (AUTH_PAGES.has(pathname)) {
+    if (isAuthed && !(pathname === "/reset-password" && search.includes("token="))) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
+  }
+
+  // Public routes (technical routes served statically) — pass.
+  // No app routes are public-only beyond auth pages and the API prefixes
+  // already handled above.
+
+  // All other routes require auth.
+  // For API calls, return a 401 JSON response so the client can handle
+  // it gracefully (rather than receiving a redirect to /login).
+  if (!isAuthed) {
+    if (isApi) {
+      return new NextResponse(
+        JSON.stringify({ ok: false, error: "You must be signed in.", code: "unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    url.search = `?callbackUrl=${encodeURIComponent(pathname + search)}`;
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
+});
+
+export const config = {
+  // Run on every navigable route except:
+  //   - _next/static, _next/image, favicon, branding, sw.js
+  //   - public assets (they're served directly by Next.js)
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|apple-icon.png|icon.png|branding|sw.js|manifest.json).*)",
+  ],
+};
