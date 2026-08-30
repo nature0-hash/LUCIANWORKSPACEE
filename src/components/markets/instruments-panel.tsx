@@ -48,11 +48,9 @@ import type { DataStatus } from "@/lib/markets/types";
 const CHIP_ROW_1: InstrumentCategory[] = [
   "favorites",
   "all",
-  "forex",
   "crypto",
-  "indices",
 ];
-const CHIP_ROW_2: InstrumentCategory[] = ["metals", "energies", "intraday"];
+const CHIP_ROW_2: InstrumentCategory[] = [];
 
 const UP = "#4bfa8f";
 const DOWN = "#ff5b5b";

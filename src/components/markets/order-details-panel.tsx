@@ -104,7 +104,7 @@ export function OrderDetailsPanel({
   const inst = useMemo(
     () =>
       (liveSymbol ? getInstrumentBySymbol(liveSymbol) : null) ??
-      getInstrumentBySymbol("EURUSD")!,
+      getInstrumentBySymbol("BTCUSD")!,
     [liveSymbol],
   );
 

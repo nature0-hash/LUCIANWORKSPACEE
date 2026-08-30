@@ -530,9 +530,66 @@ model User {
   notifications      UserNotification[]
   savedItems         SavedItem[]
   dataMigrations     UserDataMigration[]
+  cloudProjects      CloudWorkspaceProject[]
+  tradingSandbox     TradingSandboxAccount?
+  exchangeConnections ExchangeConnection[]
 
   @@index([status])
   @@index([username])
+}
+
+/* Authenticated cloud snapshot for DevWorkspace. The browser IndexedDB copy
+ * remains an offline cache; this row is the cross-tab/device source of truth. */
+model CloudWorkspaceProject {
+  id        String   @id
+  userId    String
+  project   Json
+  contents  Json
+  revision  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, id])
+  @@index([userId, updatedAt])
+}
+
+/* Persistent paper/sandbox account. Values are stored as a versioned JSON
+ * snapshot because the existing trading engine has a rich order shape. */
+model TradingSandboxAccount {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  state     Json
+  history   Json
+  revision  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/* Per-user exchange OAuth credentials. Tokens are always AES-256-GCM
+ * encrypted before persistence and never returned to the browser. */
+model ExchangeConnection {
+  id              String   @id @default(cuid())
+  userId          String
+  provider        String
+  state           String   @default("connected")
+  accessTokenEnc  String
+  refreshTokenEnc String?
+  tokenExpiresAt  DateTime
+  scope           String?
+  portfolioId     String?
+  providerUserId  String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([provider, state])
 }
 
 /* ── Account ── (OAuth provider accounts, managed by Auth.js Prisma adapter)

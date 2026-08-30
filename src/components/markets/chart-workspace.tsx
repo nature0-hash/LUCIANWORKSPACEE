@@ -488,7 +488,7 @@ export function ChartWorkspace({
 
   const handleSave = useCallback(() => {
     const ok = saveChartConfig({
-      symbol: paneStates[0]?.symbol ?? "EURUSD",
+      symbol: paneStates[0]?.symbol ?? "BTCUSD",
       timeframe: paneStates[0]?.timeframe ?? "M1",
       showBid: settings.showBid,
       showAsk: settings.showAsk,
@@ -741,7 +741,7 @@ function ChartPane({
 }) {
   const [changeInstOpen, setChangeInstOpen] = useState(false);
   const inst = useMemo(
-    () => getInstrumentBySymbol(symbol) ?? getInstrumentBySymbol("EURUSD")!,
+    () => getInstrumentBySymbol(symbol) ?? getInstrumentBySymbol("BTCUSD")!,
     [symbol],
   );
 
@@ -1557,7 +1557,7 @@ function ChartPaneGrid({
           layout === "triple" && i === 0
             ? { gridColumn: "1", gridRow: "1 / span 2" }
             : {};
-        const paneState = paneStates[i] ?? { symbol: "EURUSD", timeframe: "M1" as Timeframe };
+        const paneState = paneStates[i] ?? { symbol: "BTCUSD", timeframe: "M1" as Timeframe };
         // When a pane is maximized, hide all other panes.
         if (maximizedPane !== null && maximizedPane !== i) return null;
         return (

@@ -37,6 +37,17 @@ interface WorkspaceDB extends DBSchema {
 }
 
 let dbPromise: Promise<IDBPDatabase<WorkspaceDB>> | null = null;
+const cloudRevisions = new Map<string, number>();
+const cloudTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let cloudHydration: Promise<void> | null = null;
+
+function cloudSyncEnabled(): boolean {
+  return typeof window !== "undefined" && process.env.NEXT_PUBLIC_WORKSPACE_CLOUD_SYNC_ENABLED !== "false";
+}
+
+function announceProjectChange() {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("lucian:workspace-projects-changed"));
+}
 
 function getDB() {
   if (typeof window === "undefined") {
@@ -80,6 +91,10 @@ export function contentKey(projectId: string, path: string): string {
 
 /** Return all live projects (excluding trashed), sorted newest-updated first. */
 export async function listProjects(): Promise<Project[]> {
+  if (cloudSyncEnabled()) {
+    cloudHydration ??= hydrateCloudProjects().finally(() => { cloudHydration = null; });
+    await cloudHydration;
+  }
   const db = await getDB();
   const all = await db.getAll(PROJECTS_STORE);
   return all
@@ -105,6 +120,8 @@ export async function saveProject(project: Project): Promise<void> {
   const db = await getDB();
   project.updatedAt = Date.now();
   await db.put(PROJECTS_STORE, project);
+  scheduleCloudUpload(project.id);
+  announceProjectChange();
 }
 
 export async function deleteProject(id: string): Promise<void> {
@@ -126,6 +143,10 @@ export async function deleteProject(id: string): Promise<void> {
     cursor = await cursor.continue();
   }
   await cTx.done;
+  if (cloudSyncEnabled()) {
+    void fetch(`/api/workspace/projects/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => undefined);
+  }
+  announceProjectChange();
 }
 
 // ---- File content (lazy) -------------------------------------------------
@@ -150,11 +171,13 @@ export async function setFileContent(
     content,
     updatedAt: Date.now(),
   });
+  scheduleCloudUpload(projectId);
 }
 
 export async function deleteFileContent(projectId: string, path: string): Promise<void> {
   const db = await getDB();
   await db.delete(CONTENTS_STORE, contentKey(projectId, path));
+  scheduleCloudUpload(projectId);
 }
 
 /** Bulk-load contents for multiple files (used by Save Preview / Download ZIP). */
@@ -192,6 +215,7 @@ export async function setManyFileContents(
     ),
   );
   await tx.done;
+  scheduleCloudUpload(projectId);
 }
 
 /** Rename a file's content key. */
@@ -209,6 +233,88 @@ export async function renameFileContent(
       content: old.content,
       updatedAt: Date.now(),
     });
+    scheduleCloudUpload(projectId);
+  }
+}
+
+// ---- Authenticated cloud synchronization ---------------------------------
+
+async function hydrateCloudProjects(): Promise<void> {
+  try {
+    const response = await fetch("/api/workspace/projects", { cache: "no-store" });
+    if (!response.ok) return; // signed-out/offline users keep the local cache
+    const payload = await response.json() as { projects?: Array<{ id: string; project: Project; revision: number }> };
+    const db = await getDB();
+    for (const summary of payload.projects ?? []) {
+      cloudRevisions.set(summary.id, summary.revision);
+      const local = await db.get(PROJECTS_STORE, summary.id);
+      const remoteUpdated = Number(summary.project?.updatedAt ?? 0);
+      if (local && local.updatedAt > remoteUpdated) {
+        scheduleCloudUpload(summary.id);
+        continue;
+      }
+      const detailResponse = await fetch(`/api/workspace/projects/${encodeURIComponent(summary.id)}`, { cache: "no-store" });
+      if (!detailResponse.ok) continue;
+      const detail = await detailResponse.json() as {
+        project: Project;
+        contents: Record<string, string>;
+        revision: number;
+      };
+      await db.put(PROJECTS_STORE, detail.project);
+      const tx = db.transaction(CONTENTS_STORE, "readwrite");
+      const now = Date.now();
+      for (const [path, content] of Object.entries(detail.contents ?? {})) {
+        await tx.store.put({ key: contentKey(summary.id, path), content, updatedAt: now });
+      }
+      await tx.done;
+      cloudRevisions.set(summary.id, detail.revision);
+    }
+  } catch {
+    // Offline-first: cloud failure never prevents IndexedDB access.
+  }
+}
+
+function scheduleCloudUpload(projectId: string) {
+  if (!cloudSyncEnabled()) return;
+  const previous = cloudTimers.get(projectId);
+  if (previous) clearTimeout(previous);
+  cloudTimers.set(projectId, setTimeout(() => {
+    cloudTimers.delete(projectId);
+    void uploadCloudProject(projectId);
+  }, 900));
+}
+
+async function uploadCloudProject(projectId: string): Promise<void> {
+  try {
+    const db = await getDB();
+    const project = await db.get(PROJECTS_STORE, projectId);
+    if (!project) return;
+    const contents: Record<string, string> = {};
+    const tx = db.transaction(CONTENTS_STORE, "readonly");
+    for (const file of project.files) {
+      const row = await tx.store.get(contentKey(projectId, file.path));
+      if (row) contents[file.path] = row.content;
+    }
+    await tx.done;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const revision = cloudRevisions.get(projectId);
+    if (revision) headers["If-Match"] = String(revision);
+    const response = await fetch(`/api/workspace/projects/${encodeURIComponent(projectId)}`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ project, contents }),
+    });
+    if (response.ok) {
+      const saved = await response.json() as { revision: number };
+      cloudRevisions.set(projectId, saved.revision);
+    } else if (response.status === 409) {
+      // Pull the newer snapshot on the next list refresh instead of silently
+      // overwriting edits made in another tab/device.
+      cloudRevisions.delete(projectId);
+      announceProjectChange();
+    }
+  } catch {
+    // Local data remains durable; a later mutation/load retries upload.
   }
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   BarChart3,
   ArrowDownToLine,
@@ -49,6 +50,7 @@ const TOGGLE_BASE = "text-fg-faint hover:bg-hover hover:text-fg themed";
 /* ------------------------------------------------------------------ */
 
 export function MarketsFrame() {
+  const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [panelOpen, setPanelOpen] = useState(true);
   const leftPanelMode = useMarketsStore((s) => s.leftPanelMode);
@@ -93,6 +95,7 @@ export function MarketsFrame() {
   const [historyOpen, setHistoryOpen] = useState(false);
   // Phase 10: price alerts dialog state.
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [coinbase, setCoinbase] = useState<{ configured: boolean; connected: boolean; state: string; usdBalance?: number }>({ configured: false, connected: false, state: "loading" });
 
   const isLight = useMemo(() => {
     return (
@@ -125,6 +128,17 @@ export function MarketsFrame() {
   useEffect(() => {
     useMarketsStore.getState().initialize();
     useMarketsStore.getState().refreshTrading();
+    void fetch("/api/integrations/coinbase/status", { cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (!data) return;
+        const accounts = Array.isArray(data.balances?.accounts) ? data.balances.accounts : [];
+        const usd = accounts
+          .filter((account: { currency?: string }) => account.currency === "USD" || account.currency === "USDC")
+          .reduce((sum: number, account: { available_balance?: { value?: string } }) => sum + Number(account.available_balance?.value ?? 0), 0);
+        setCoinbase({ configured: Boolean(data.configured), connected: Boolean(data.connected), state: String(data.state ?? "unknown"), usdBalance: usd });
+      })
+      .catch(() => undefined);
   }, []);
 
   const handleRailInstrumentsClick = () => {
@@ -347,20 +361,30 @@ export function MarketsFrame() {
               />
               <AccountPill
                 label="Real"
-                value={isVirtual ? "Not connected" : "Broker required"}
+                value={coinbase.connected ? fmt(coinbase.usdBalance ?? 0) : coinbase.configured ? "Connect Coinbase" : "Setup required"}
                 accent="blue"
                 active={!isVirtual}
               />
             </button>
 
+            {!isVirtual && !coinbase.connected && coinbase.configured && (
+              <button
+                type="button"
+                onClick={() => router.push("/api/integrations/coinbase/connect")}
+                className="shrink-0 rounded-[6px] border border-line-muted px-3 py-1.5 text-[11px] font-semibold text-fg hover:bg-hover"
+              >
+                Connect Coinbase
+              </button>
+            )}
+
             {/* Deposit button — opens the account-action dialog (Virtual:
                 Reset to $1,000; Real: broker-required state). */}
             <button
               type="button"
-              onClick={() => setAccountAction("deposit")}
+              onClick={() => { if (!isVirtual) router.push("/vault"); else setAccountAction("deposit"); }}
               className="shrink-0 rounded-[6px] bg-[var(--accent)] px-5 py-1.5 text-[12px] font-semibold text-[var(--accent-fg)] shadow-sm transition-colors hover:bg-[var(--accent-hover)] themed"
             >
-              Deposit
+              {isVirtual ? "Add sandbox funds" : "Open Vault"}
             </button>
           </div>
         </div>

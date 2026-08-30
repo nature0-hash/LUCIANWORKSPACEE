@@ -8,6 +8,7 @@ export type LedgerAccountType =
   | "provider-clearing"     // external money in transit to/from a provider
   | "cash-pending"          // inbound funds awaiting provider settlement
   | "cash-available"        // settled, withdrawable cash
+  | "sandbox-cash-available" // persistent demo funds; NEVER withdrawable
   | "cash-reserved"         // holds (e.g. open withdrawal requests)
   | "withdrawal-pending"    // outbound funds awaiting provider completion
   | "trading-cash"          // cash inside the brokerage
@@ -21,6 +22,7 @@ export const ALL_LEDGER_ACCOUNTS: readonly LedgerAccountType[] = [
   "provider-clearing",
   "cash-pending",
   "cash-available",
+  "sandbox-cash-available",
   "cash-reserved",
   "withdrawal-pending",
   "trading-cash",

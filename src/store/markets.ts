@@ -43,6 +43,7 @@ import {
   openPosition,
   placePendingOrder,
   closePositionsByIds,
+  syncPaperAccountFromCloud,
   cancelPendingOrder,
   updateUnrealizedPnl,
   evaluatePendingTriggers,
@@ -468,7 +469,7 @@ export const useMarketsStore = create<MarketsState>((set, get) => ({
         { symbol: "BTCUSD", timeframe: "M1" },
         { symbol: "ETHUSD", timeframe: "M1" },
         { symbol: "SOLUSD", timeframe: "M1" },
-        { symbol: "XAUUSD", timeframe: "M1" },
+        { symbol: "ETHUSD", timeframe: "M1" },
       ];
       while (next.length < count) {
         next.push(defaults[next.length] ?? defaults[0]);
@@ -775,6 +776,9 @@ export const useMarketsStore = create<MarketsState>((set, get) => ({
   },
 
   placeMarketOrder: (symbol, side, entryPrice, volume, stopLoss = 0, takeProfit = 0) => {
+    if (get().accountMode === "real") {
+      return { success: false, error: "Live orders require the Coinbase preview and confirmation flow. Switch to Virtual until Coinbase is connected and live trading is enabled." };
+    }
     const rules = get().riskRules;
     const result = openPosition(
       symbol,
@@ -792,6 +796,9 @@ export const useMarketsStore = create<MarketsState>((set, get) => ({
   },
 
   placePending: (symbol, side, orderType, price, volume, stopLoss = 0, takeProfit = 0) => {
+    if (get().accountMode === "real") {
+      return { success: false, error: "Live pending orders are locked until the Coinbase confirmation UI is enabled." };
+    }
     const rules = get().riskRules;
     const result = placePendingOrder(
       symbol,
@@ -856,6 +863,7 @@ export const useMarketsStore = create<MarketsState>((set, get) => ({
     void get().refreshInstruments();
     // Seed account/positions on first init so the bottom panel isn't empty.
     get().refreshTrading();
+    void syncPaperAccountFromCloud().then(() => get().refreshTrading());
   },
 }));
 
@@ -913,7 +921,7 @@ export function useActiveContext(): ActiveContextSnapshot {
     const pane = s.paneStates[s.activePaneIndex] ?? s.paneStates[0];
     if (!pane) {
       return {
-        symbol: "EURUSD",
+        symbol: "BTCUSD",
         timeframe: "M1" as LucianTimeframe,
         bid: 0,
         ask: 0,

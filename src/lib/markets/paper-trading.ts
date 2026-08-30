@@ -55,7 +55,7 @@ const SCHEMA_VERSION = 2; // bump when the persisted shape changes
 const DEFAULT_STARTING_BALANCE = 1000; // $1,000 virtual USD
 const MAX_HISTORY_ENTRIES = 500; // bound to avoid unbounded localStorage growth
 
-interface PaperAccountData {
+export interface PaperAccountData {
   /** Schema version — used by the migration path in `loadData()`. */
   schemaVersion: number;
   startingBalance: number;
@@ -266,6 +266,7 @@ export function saveData(data: PaperAccountData): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    scheduleCloudTradingSave();
   } catch {
     // storage unavailable
   }
@@ -296,8 +297,44 @@ function saveHistory(entries: OperationHistoryEntry[]): void {
       ? entries.slice(0, MAX_HISTORY_ENTRIES)
       : entries;
     localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
+    scheduleCloudTradingSave();
   } catch {
     // storage unavailable
+  }
+}
+
+let cloudSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleCloudTradingSave(): void {
+  if (typeof window === "undefined" || process.env.NEXT_PUBLIC_TRADING_CLOUD_SYNC_ENABLED === "false") return;
+  if (cloudSaveTimer) clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = setTimeout(() => {
+    cloudSaveTimer = null;
+    void fetch("/api/trading/sandbox", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state: loadData(), history: loadHistory() }),
+    }).catch(() => undefined);
+  }, 700);
+}
+
+/** Hydrate the paper account from authenticated cloud storage. On a user's
+ * first visit, upload the existing local account so no work is discarded. */
+export async function syncPaperAccountFromCloud(): Promise<boolean> {
+  if (typeof window === "undefined" || process.env.NEXT_PUBLIC_TRADING_CLOUD_SYNC_ENABLED === "false") return false;
+  try {
+    const response = await fetch("/api/trading/sandbox", { cache: "no-store" });
+    if (!response.ok) return false;
+    const payload = await response.json() as { account?: { state: PaperAccountData; history: OperationHistoryEntry[] } | null };
+    if (payload.account) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrateData(payload.account.state)));
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(payload.account.history ?? []));
+      return true;
+    }
+    scheduleCloudTradingSave();
+    return false;
+  } catch {
+    return false;
   }
 }
 

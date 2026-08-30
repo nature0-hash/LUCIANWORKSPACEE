@@ -37,6 +37,16 @@ export function DevWorkspaceModule() {
     refreshProjects();
   }, [refreshProjects]);
 
+  useEffect(() => {
+    const refresh = () => void refreshProjects();
+    window.addEventListener("focus", refresh);
+    window.addEventListener("lucian:workspace-projects-changed", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("lucian:workspace-projects-changed", refresh);
+    };
+  }, [refreshProjects]);
+
   // Restore the last project on initial load (one-shot).
   useEffect(() => {
     if (restoreAttemptedRef.current) return;

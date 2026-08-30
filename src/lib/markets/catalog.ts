@@ -192,7 +192,9 @@ function deriveBase(symbol: string): string {
 }
 
 /** Materialized catalog (converted from terse row tuples). */
-export const INSTRUMENT_CATALOG: CatalogInstrument[] = ROWS.map(
+export const INSTRUMENT_CATALOG: CatalogInstrument[] = ROWS.filter(
+  (r) => r[3] === "crypto",
+).map(
   (r) => ({
     symbol: r[0],
     name: r[1],

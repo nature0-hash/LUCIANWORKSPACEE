@@ -64,6 +64,7 @@ export async function GET() {
   // PER-USER balances — pass ownerUserId so only this user's entries
   // are summed. User A's ledger does NOT affect User B's balances.
   const cashAvailable = await ledger.deriveBalance("cash-available", currency, userId);
+  const sandboxCashAvailable = await ledger.deriveBalance("sandbox-cash-available", currency, userId);
   const cashPending = await ledger.deriveBalance("cash-pending", currency, userId);
   const cashReserved = await ledger.deriveBalance("cash-reserved", currency, userId);
   const tradingCash = await ledger.deriveBalance("trading-cash", currency, userId);
@@ -72,6 +73,7 @@ export async function GET() {
   const tradingReservedOrders = await ledger.deriveBalance("trading-reserved", currency, userId);
 
   const withdrawable = subtract(cashAvailable.balance, cashReserved.balance);
+  const displayedAvailable = add(cashAvailable.balance, sandboxCashAvailable.balance);
 
   // Crypto holdings (from provider when connected).
   let cryptoHoldings: Array<{
@@ -98,7 +100,7 @@ export async function GET() {
     // Provider not connected or stub — empty list.
   }
 
-  const totalCashValue = add(add(cashAvailable.balance, cashPending.balance), cashReserved.balance);
+  const totalCashValue = add(add(displayedAvailable, cashPending.balance), cashReserved.balance);
   const totalTradingValue = add(tradingCash.balance, tradingPositions.balance);
   const totalCryptoValue = cryptoHoldings.reduce(
     (sum, h) => sum + BigInt(h.fiatEquivalent.amount),
@@ -108,7 +110,8 @@ export async function GET() {
 
   return NextResponse.json({
     cash: {
-      available: { amount: cashAvailable.balance.amount.toString(), currency: cashAvailable.balance.currency },
+      available: { amount: displayedAvailable.amount.toString(), currency: displayedAvailable.currency },
+      sandboxAvailable: { amount: sandboxCashAvailable.balance.amount.toString(), currency: sandboxCashAvailable.balance.currency },
       pending: { amount: cashPending.balance.amount.toString(), currency: cashPending.balance.currency },
       reserved: { amount: cashReserved.balance.amount.toString(), currency: cashReserved.balance.currency },
       withdrawable: { amount: withdrawable.amount.toString(), currency: withdrawable.currency },

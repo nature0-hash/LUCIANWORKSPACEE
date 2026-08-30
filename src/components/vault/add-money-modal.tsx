@@ -39,6 +39,7 @@ import { VaultCard, StatusPill, ProviderNotConnectedBanner } from "./primitives"
 import { CreditCard, Banknote, Bitcoin, Loader2, ShieldCheck, AlertCircle } from "lucide-react";
 
 type FundingMethod =
+  | { kind: "sandbox"; id: "sandbox"; label: string }
   | { kind: "card"; id: string; label: string }
   | { kind: "bank"; id: string; label: string }
   | { kind: "crypto"; asset: CryptoAssetSymbol; network: CryptoNetwork };
@@ -84,11 +85,13 @@ export function AddMoneyModal({
   const banks = store.bankAccounts;
   const cryptoWallets = store.cryptoWallets;
   const hasAnyMethod = cards.length + banks.length + cryptoWallets.length > 0;
+  const sandboxMode = process.env.NEXT_PUBLIC_TRADING_MODE !== "live";
 
   // Parse selected method
   const method: FundingMethod | null = (() => {
     if (!selectedMethod) return null;
     const [kind, id] = selectedMethod.split(":");
+    if (kind === "sandbox" && sandboxMode) return { kind: "sandbox", id: "sandbox", label: "LUCIAN persistent sandbox" };
     if (kind === "card") {
       const card = cards.find((c) => c.id === id);
       if (card) return { kind: "card", id: card.id, label: card.displayName };
@@ -125,7 +128,7 @@ export function AddMoneyModal({
     }
 
     try {
-      const res = await fetch("/api/vault/deposits", {
+      const res = await fetch(method.kind === "sandbox" ? "/api/vault/sandbox-funds" : "/api/vault/deposits", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -135,7 +138,7 @@ export function AddMoneyModal({
           amount: Math.round(amountNum * 100), // minor units
           currency,
           method: method.kind,
-          methodId: method.kind === "crypto" ? undefined : method.id,
+          methodId: method.kind === "crypto" || method.kind === "sandbox" ? undefined : method.id,
           asset: method.kind === "crypto" ? (method as Extract<FundingMethod, { kind: "crypto" }>).asset : undefined,
           network: method.kind === "crypto" ? (method as Extract<FundingMethod, { kind: "crypto" }>).network : undefined,
         }),
@@ -201,7 +204,7 @@ export function AddMoneyModal({
                     disabled={flow.state === "submitting"}
                   />
                 </div>
-                <Select value={currency} onValueChange={setCurrency} disabled={flow.state === "submitting"}>
+                <Select value={currency} onValueChange={setCurrency} disabled={flow.state === "submitting" || method?.kind === "sandbox"}>
                   <SelectTrigger className="w-[90px]">
                     <SelectValue />
                   </SelectTrigger>
@@ -217,7 +220,7 @@ export function AddMoneyModal({
             {/* Pay with */}
             <div>
               <Label className="text-[11px] uppercase tracking-wider text-fg-muted">Pay with</Label>
-              {!hasAnyMethod ? (
+              {!hasAnyMethod && !sandboxMode ? (
                 <div className="mt-2 rounded-md border border-dashed border-line-muted bg-inset/40 p-4 text-center">
                   <p className="text-[11px] text-fg-muted">
                     No payment methods available. Add a card, bank account, or crypto wallet in the Money tab first.
@@ -225,6 +228,15 @@ export function AddMoneyModal({
                 </div>
               ) : (
                 <div className="mt-2 space-y-1.5">
+                  {sandboxMode && (
+                    <FundingOption
+                      selected={selectedMethod === "sandbox:sandbox"}
+                      onClick={() => { setSelectedMethod("sandbox:sandbox"); setCurrency("USD"); }}
+                      icon={<ShieldCheck className="h-4 w-4" />}
+                      label="LUCIAN persistent sandbox"
+                      sublabel="Saved to your account · test funds · not withdrawable"
+                    />
+                  )}
                   {cards.map((card) => (
                     <FundingOption
                       key={`card:${card.id}`}
@@ -267,8 +279,11 @@ export function AddMoneyModal({
               <div className="flex items-start gap-2">
                 <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-faint" />
                 <p className="text-[10.5px] leading-relaxed text-fg-muted">
-                  Funds will appear as <span className="font-semibold text-amber-300">Pending</span> until the provider confirms settlement.
-                  LUCIAN never marks funds available based on client-reported success.
+                  {method?.kind === "sandbox" ? (
+                    <>Sandbox funds are saved to your LUCIAN account immediately, but can never be withdrawn or presented as real money.</>
+                  ) : (
+                    <>Funds appear as <span className="font-semibold text-amber-300">Pending</span> until the connected provider confirms settlement.</>
+                  )}
                 </p>
               </div>
             </div>
@@ -285,7 +300,7 @@ export function AddMoneyModal({
               </Button>
               <Button
                 onClick={handleContinue}
-                disabled={!amountValid || !method || flow.state === "submitting" || !hasAnyMethod}
+                disabled={!amountValid || !method || flow.state === "submitting" || (!hasAnyMethod && !sandboxMode)}
               >
                 {flow.state === "submitting" ? (
                   <>

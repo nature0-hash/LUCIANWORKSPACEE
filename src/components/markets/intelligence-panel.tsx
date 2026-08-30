@@ -329,10 +329,10 @@ function ChatTab() {
   const tickers = useMarketsStore((s) => s.tickers);
   const statusBySymbol = useMarketsStore((s) => s.statusBySymbol);
   const pane = paneStates[activePaneIndex] ?? paneStates[0];
-  const liveSymbol = pane?.symbol ?? "EURUSD";
+  const liveSymbol = pane?.symbol ?? "BTCUSD";
   const liveTimeframe = pane?.timeframe ?? "M1";
   const inst = useMemo(
-    () => getInstrumentBySymbol(liveSymbol) ?? getInstrumentBySymbol("EURUSD")!,
+    () => getInstrumentBySymbol(liveSymbol) ?? getInstrumentBySymbol("BTCUSD")!,
     [liveSymbol],
   );
   const livePrice = prices.get(liveSymbol);
@@ -733,7 +733,7 @@ function FeedTab() {
   const pane = paneStates[activePaneIndex] ?? paneStates[0];
   const selectedSymbol = pane?.symbol ?? null;
   const inst = useMemo(
-    () => getInstrumentBySymbol(selectedSymbol ?? "EURUSD") ?? getInstrumentBySymbol("EURUSD")!,
+    () => getInstrumentBySymbol(selectedSymbol ?? "BTCUSD") ?? getInstrumentBySymbol("BTCUSD")!,
     [selectedSymbol],
   );
 
