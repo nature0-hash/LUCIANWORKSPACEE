@@ -48,6 +48,10 @@ The new migration is `prisma/migrations/20260830010000_cloud_projects_trading/mi
 - Vault architecture suite: 52/52 passed.
 - Local browser smoke test: unauthenticated `/markets` correctly routes to the sign-in page.
 
+## Vercel cached-Prisma fix
+
+The production build script now runs `prisma generate` before `next build`, and `postinstall` also regenerates the client. This prevents Vercel dependency-cache restores from compiling against an older Prisma Client that does not contain the new cloud-project, sandbox-trading, and exchange-connection models.
+
 ## Verification requiring your infrastructure
 
 These cannot be truthfully completed without your production credentials and database:
