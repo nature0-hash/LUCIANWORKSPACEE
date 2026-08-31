@@ -3,6 +3,7 @@ import { getProvider, isProviderConfigured, type ChatMessage } from "@/lib/agent
 import { loadAgentMemorySection, writeMemoryFromConversation } from "@/lib/agent/memory";
 import { requireUserId } from "@/lib/auth/session";
 import type { ProviderId } from "@/store/shared-ai-config";
+import { agentCapitalSummary, executeLiveTrade, previewLiveTrade, updateTradingProfile } from "@/lib/coinbase/trading";
 import {
   DEFAULT_AI_BEHAVIOR,
   RESPONSE_STYLE_SNIPPETS,
@@ -110,6 +111,34 @@ export async function POST(req: Request) {
     }
   }
 
+  // Real-money commands use a deterministic server-side parser rather than
+  // trusting free-form model output. Every new order is previewed; execution
+  // requires the user to send the returned confirmation id in a later turn.
+  if (authenticatedUserId) {
+    const latestUserText = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
+    try {
+      const tradingReply = await handleTradingCommand(authenticatedUserId, latestUserText);
+      if (tradingReply) {
+        return NextResponse.json({ success: true, content: tradingReply, provider: "lucian-trading", model: "coinbase-advanced" } satisfies SuccessResponse);
+      }
+      // Give the Economic Agent read-only account context. It can explain the
+      // full balance and its own smaller permission envelope without secrets.
+      const capital = await agentCapitalSummary(authenticatedUserId);
+      fullSystemPrompt += `\n\n## Live trading account (server-authoritative)\nCoinbase USD/USDC available: $${capital.actualUsdAvailable.toFixed(2)}\nAgent Capital allocation: $${capital.profile.allocationUsd.toFixed(2)}\nAgent Capital currently available: $${capital.availableAgentUsd.toFixed(2)}\nAgent permission mode: ${capital.profile.permissionMode}\nEmergency stop: ${capital.profile.emergencyStop ? "ON" : "off"}\nNever claim a trade occurred unless LUCIAN returns a Coinbase confirmation. To initiate one, tell the user to use an explicit command such as “buy BTC with $10” or “sell 0.001 BTC”.`;
+    } catch (error) {
+      if (looksLikeTradingCommand(latestUserText)) {
+        return NextResponse.json({
+          success: true,
+          content: `I did **not** prepare or execute a trade. ${error instanceof Error ? error.message : "The server rejected the command."}`,
+          provider: "lucian-trading",
+          model: "coinbase-advanced",
+        } satisfies SuccessResponse);
+      }
+      // Coinbase may be intentionally unconfigured. Normal Economic Agent
+      // chat remains available without financial context.
+    }
+  }
+
   // 2. Context level → budget (max items + max chars). Items are kept in
   //    their original order; we drop any that would exceed the budget.
   //    Phase 17: if behavior.allowProjectContext is OFF, drop context
@@ -207,4 +236,48 @@ export async function POST(req: Request) {
       { status: statusCode },
     );
   }
+}
+
+function looksLikeTradingCommand(text: string): boolean {
+  const value = text.trim();
+  if (!value || value.endsWith("?") || /^(should|could|can|would|what|why|how|is|are)\b/i.test(value)) return false;
+  if (/^(?:please\s+)?(?:buy|purchase|sell|confirm|execute|approve|allocate|set\s+aside|handle\s+(?:the\s+)?trades?\s+with|trade\s+with)\b/i.test(value)) return true;
+  return /^use\b/i.test(value) && /\$\d|\b(agent capital|trad(?:e|ing|es))\b/i.test(value);
+}
+
+async function handleTradingCommand(userId: string, raw: string): Promise<string | null> {
+  const text = raw.trim();
+  if (!text || /^(should|could|can|would|what|why|how|is|are)\b/i.test(text) || text.endsWith("?")) return null;
+
+  const confirm = text.match(/^(?:confirm|execute|approve)(?:\s+(?:the\s+)?trade)?\s+([a-z0-9]{20,40})$/i);
+  if (confirm) {
+    const result = await executeLiveTrade(userId, confirm[1]);
+    const orderId = ((result as { success_response?: { order_id?: string } }).success_response)?.order_id ?? "submitted";
+    return `Trade submitted to Coinbase successfully.\n\n- Order: \`${orderId}\`\n- Audit intent: \`${result.intentId}\`\n\nI will use Coinbase fills to reconcile the Agent Capital balance.`;
+  }
+
+  const allocation = text.match(/\b(?:allocate|set\s+aside|use|handle\s+(?:the\s+)?trades?\s+with|trade\s+with)\s+\$?(\d+(?:\.\d{1,2})?)\b/i);
+  if (allocation && /\b(agent|capital|trad(?:e|ing|es)|this)\b/i.test(text)) {
+    const summary = await updateTradingProfile(userId, { allocationUsd: Number(allocation[1]) });
+    return `Agent Capital is now set to **$${Number(summary.allocationUsd).toFixed(2)}**. I can see the full Coinbase balance for context, but I cannot trade beyond this allocation. Tell me the asset and amount, for example: \`buy BTC with $10\`.`;
+  }
+
+  const buyA = text.match(/^\s*(?:please\s+)?(?:buy|purchase)\s+\$?(\d+(?:\.\d{1,2})?)\s+(?:of\s+)?([a-z0-9]{2,10})\s*$/i);
+  const buyB = text.match(/^\s*(?:please\s+)?(?:buy|purchase)\s+([a-z0-9]{2,10})\s+(?:with|for)\s+\$?(\d+(?:\.\d{1,2})?)\s*$/i);
+  if (buyA || buyB) {
+    const amount = buyA ? buyA[1] : buyB![2];
+    const asset = (buyA ? buyA[2] : buyB![1]).toUpperCase();
+    const prepared = await previewLiveTrade(userId, { productId: `${asset}-USD`, side: "BUY", quoteSize: amount, initiatedBy: "ai" });
+    const preview = prepared.preview as { order_total?: string; commission_total?: string; est_average_filled_price?: string };
+    return `I prepared a real Coinbase market buy, but have **not executed it yet**.\n\n- Product: **${asset}-USD**\n- Spend: **$${Number(amount).toFixed(2)}**\n- Estimated fee: **$${Number(preview.commission_total ?? 0).toFixed(2)}**\n- Preview expires: **${new Date(prepared.expiresAt ?? Date.now()).toLocaleTimeString()}**\n\nTo approve it, send exactly:\n\n\`confirm trade ${prepared.intentId}\``;
+  }
+
+  const sell = text.match(/^\s*(?:please\s+)?sell\s+(\d+(?:\.\d{1,12})?)\s+([a-z0-9]{2,10})\s*$/i);
+  if (sell) {
+    const asset = sell[2].toUpperCase();
+    const prepared = await previewLiveTrade(userId, { productId: `${asset}-USD`, side: "SELL", baseSize: sell[1], initiatedBy: "ai" });
+    const preview = prepared.preview as { commission_total?: string; est_average_filled_price?: string };
+    return `I prepared a real Coinbase market sell, but have **not executed it yet**.\n\n- Product: **${asset}-USD**\n- Quantity: **${sell[1]} ${asset}**\n- Estimated price: **$${Number(preview.est_average_filled_price ?? 0).toFixed(2)}**\n- Estimated fee: **$${Number(preview.commission_total ?? 0).toFixed(2)}**\n\nTo approve it, send exactly:\n\n\`confirm trade ${prepared.intentId}\``;
+  }
+  return null;
 }

@@ -13,6 +13,10 @@ Date: 2026-08-30
 - Coinbase live spot order APIs were added. They accept only USD/USDC crypto products, enforce a maximum live order value, require a Coinbase portfolio, and always require preview plus explicit confirmation before execution.
 - Live trading and AI live trading have independent server-side kill switches and default to disabled.
 - The previous Settings/sidebar cleanup remains intact. Other LUCIAN modules were not redesigned.
+- Coinbase owner-account API-key mode now works without an OAuth Client ID. Requests use short-lived, per-request ES256 JWTs and the key is restricted to the configured LUCIAN owner email.
+- Real Agent Capital is stored in Postgres and enforced on the server. The agent can read the full Coinbase balance but buys cannot exceed its allocation or per-order ceiling; sells cannot exceed Coinbase-filled positions acquired through tracked agent orders.
+- The Economic Agent understands explicit allocation, buy, sell, and confirmation commands. It always creates a Coinbase preview first and requires a separate confirmation message before submission.
+- Every live preview/submission is persisted in `LiveTradeIntent` for cross-device audit and fill reconciliation. An emergency stop and permission mode live in `TradingAgentProfile`.
 
 ## Important operating modes
 
@@ -35,7 +39,7 @@ OpenRouter remains an AI-credit provider only; it is not used as a wallet or inv
 5. Configure the environment variables in `ENVIRONMENT-VARIABLES.md` in Vercel.
 6. Redeploy.
 
-The new migration is `prisma/migrations/20260830010000_cloud_projects_trading/migration.sql`.
+The migrations include `prisma/migrations/20260830010000_cloud_projects_trading/migration.sql` and `prisma/migrations/20260830020000_agent_capital_api_key/migration.sql`.
 
 ## Verification completed
 

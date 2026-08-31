@@ -23,7 +23,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/* ── Vault accounts ── */
+/**
+ * ── Vault accounts ──
+ */
 //
 // `source` distinguishes:
 //   - "manual"     : self-reported by the user (UI only, not authoritative money)
@@ -35,19 +37,19 @@ datasource db {
 // records never become a globally shared dataset when auth lands.
 
 model VaultAccount {
-  id            String   @id @default(cuid())
-  label         String
-  type          String   // bank | card | crypto-wallet | brokerage | trading
-  source        String   // manual | provider
-  provider      String?
-  maskedId      String?
-  balance       BigInt   @default(0) // display-only cache; authoritative money is ledger-derived
-  currency      String   @default("USD")
-  note          String?
+  id       String  @id @default(cuid())
+  label    String
+  type     String // bank | card | crypto-wallet | brokerage | trading
+  source   String // manual | provider
+  provider String?
+  maskedId String?
+  balance  BigInt  @default(0) // display-only cache; authoritative money is ledger-derived
+  currency String  @default("USD")
+  note     String?
 
   // Provider linkage
   providerConnectionId String?
-  depositEligible       Boolean @default(false)
+  depositEligible      Boolean @default(false)
   withdrawalEligible   Boolean @default(false)
 
   // Phase 16 (Auth) preparation — never populated until Auth exists.
@@ -57,51 +59,48 @@ model VaultAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  ledgerEntries    LedgerEntry[]
-  balanceHistory   BalanceHistory[]
-  paymentMethods   PaymentMethod[]
-  bankAccounts     BankAccount[]
-  transactions      VaultTransaction[]
+  ledgerEntries  LedgerEntry[]
+  balanceHistory BalanceHistory[]
+  paymentMethods PaymentMethod[]
+  bankAccounts   BankAccount[]
+  transactions   VaultTransaction[]
 
   @@index([source])
   @@index([type])
   @@index([ownerUserId])
 }
 
-/* ── Ledger entries (immutable, append-only) ──
- *
+/**
+ * ── Ledger entries (immutable, append-only) ──
  * Balanced double-entry accounting. Every entry has a DISTINCT debit and
  * credit account. The invariant `debitAccount !== creditAccount` is
  * enforced both at the type layer and by the ledger service at write time.
- *
  * Account identifiers (kept as strings for forward-compat):
- *   - provider-clearing      : external money in transit to/from a provider
- *   - cash-pending           : inbound funds awaiting provider settlement
- *   - cash-available          : settled, withdrawable cash
- *   - cash-reserved           : holds (e.g. open withdrawal requests)
- *   - withdrawal-pending      : outbound funds awaiting provider completion
- *   - trading-cash            : cash inside the brokerage
- *   - trading-reserved        : cash reserved for open orders
- *   - trading-buying-power    : brokerage buying power (provider-supplied)
- *   - trading-positions       : market value of open positions
- *   - crypto-custody          : crypto held by the custodian
- *   - fee-account            : fees collected
- *
+ * - provider-clearing      : external money in transit to/from a provider
+ * - cash-pending           : inbound funds awaiting provider settlement
+ * - cash-available          : settled, withdrawable cash
+ * - cash-reserved           : holds (e.g. open withdrawal requests)
+ * - withdrawal-pending      : outbound funds awaiting provider completion
+ * - trading-cash            : cash inside the brokerage
+ * - trading-reserved        : cash reserved for open orders
+ * - trading-buying-power    : brokerage buying power (provider-supplied)
+ * - trading-positions       : market value of open positions
+ * - crypto-custody          : crypto held by the custodian
+ * - fee-account            : fees collected
  * Reference flows:
- *   DEPOSIT (initiated):     provider-clearing  →  cash-pending
- *   DEPOSIT (settled, webhook): cash-pending    →  cash-available
- *   WITHDRAWAL (requested):  cash-available     →  withdrawal-pending
- *   WITHDRAWAL (completed):  withdrawal-pending →  provider-clearing
- *   WITHDRAWAL (failed):     withdrawal-pending →  cash-available   (release)
- *   INTERNAL TRANSFER:       <source>           →  <destination>
- *   FEE:                     <source>           →  fee-account
- *
+ * DEPOSIT (initiated):     provider-clearing  →  cash-pending
+ * DEPOSIT (settled, webhook): cash-pending    →  cash-available
+ * WITHDRAWAL (requested):  cash-available     →  withdrawal-pending
+ * WITHDRAWAL (completed):  withdrawal-pending →  provider-clearing
+ * WITHDRAWAL (failed):     withdrawal-pending →  cash-available   (release)
+ * INTERNAL TRANSFER:       <source>           →  <destination>
+ * FEE:                     <source>           →  fee-account
  * `idempotencyKey` is unique — attempting to append a second entry with
  * the same key is rejected and the original is returned.
  */
 
 model LedgerEntry {
-  id              String   @id @default(cuid())
+  id              String  @id @default(cuid())
   // User-scoped idempotency. Same (ownerUserId, idempotencyKey) returns
   // the existing entry; the same key under a different user is a
   // completely independent operation. NULL ownerUserId is reserved for
@@ -109,11 +108,11 @@ model LedgerEntry {
   idempotencyKey  String
   providerEventId String?
   providerTxId    String?
-  type            String   // deposit | withdrawal | internal-transfer | trade | fee | adjustment | reservation | release | settlement
-  status          String   // requested | pending | processing | requires-action | completed | failed | cancelled
-  debitAccount    String   // NEVER equal to creditAccount
-  creditAccount   String   // NEVER equal to debitAccount
-  amount          BigInt   // minor units (always positive)
+  type            String // deposit | withdrawal | internal-transfer | trade | fee | adjustment | reservation | release | settlement
+  status          String // requested | pending | processing | requires-action | completed | failed | cancelled
+  debitAccount    String // NEVER equal to creditAccount
+  creditAccount   String // NEVER equal to debitAccount
+  amount          BigInt // minor units (always positive)
   currency        String
 
   source      String
@@ -134,7 +133,7 @@ model LedgerEntry {
 
   timestamp DateTime @default(now())
 
-  account VaultAccount? @relation(fields: [accountId], references: [id])
+  account   VaultAccount? @relation(fields: [accountId], references: [id])
   accountId String?
 
   @@unique([ownerUserId, idempotencyKey])
@@ -152,52 +151,49 @@ model LedgerEntry {
   @@index([idempotencyKey])
 }
 
-/* ── Vault transactions (user-facing financial activity) ──
- *
+/**
+ * ── Vault transactions (user-facing financial activity) ──
  * A VaultTransaction is the user's view of a financial intent ("I added
  * $500 via card X"). It links to one or more LedgerEntry rows that move
  * money through the balanced accounting pipeline.
- *
  * Status transitions are explicit and enforced (see
  * src/lib/vault/transitions.ts):
- *   requested   → pending | failed | cancelled
- *   pending     → processing | requires-action | failed | cancelled
- *   processing  → completed | failed
- *   requires-action → processing | failed | cancelled
- *   completed   → (terminal)
- *   failed      → (terminal; recovery requires a NEW transaction)
- *   cancelled   → (terminal)
- *
+ * requested   → pending | failed | cancelled
+ * pending     → processing | requires-action | failed | cancelled
+ * processing  → completed | failed
+ * requires-action → processing | failed | cancelled
+ * completed   → (terminal)
+ * failed      → (terminal; recovery requires a NEW transaction)
+ * cancelled   → (terminal)
  * `failed → completed` is FORBIDDEN. If a provider genuinely reverses a
  * failure, a NEW VaultTransaction is created with type=adjustment and a
  * linked `reversalOfId`.
- *
  * Linking fields — provider events locate the original transaction by:
- *   1. providerTxId  (preferred — set by the API on initiation)
- *   2. providerEventId (recorded on the originating transaction as a hint)
- *   3. idempotencyKey (last resort — the original request key)
+ * 1. providerTxId  (preferred — set by the API on initiation)
+ * 2. providerEventId (recorded on the originating transaction as a hint)
+ * 3. idempotencyKey (last resort — the original request key)
  */
 
 model VaultTransaction {
-  id                  String   @id @default(cuid())
-  lucianTxId          String   @unique // public-facing ID, e.g. "dep_..."
-  type                String   // deposit | withdrawal | internal-transfer | trade | fee | adjustment
-  status              String   // requested | pending | processing | requires-action | completed | failed | cancelled
-  currency            String
-  asset               String?
-  network             String?
-  amount              BigInt   // minor units, positive
-  source              String
-  destination         String
-  provider            String?
+  id                    String        @id @default(cuid())
+  lucianTxId            String        @unique // public-facing ID, e.g. "dep_..."
+  type                  String // deposit | withdrawal | internal-transfer | trade | fee | adjustment
+  status                String // requested | pending | processing | requires-action | completed | failed | cancelled
+  currency              String
+  asset                 String?
+  network               String?
+  amount                BigInt // minor units, positive
+  source                String
+  destination           String
+  provider              String?
   providerTransactionId String?
-  providerEventId     String?
-  idempotencyKey      String?
-  userId              String?  // Phase 16 (Auth) preparation
-  accountId           String?
-  account             VaultAccount? @relation(fields: [accountId], references: [id])
-  reversalOfId        String?  // set on adjustment transactions that reverse a prior one
-  metadata            Json?
+  providerEventId       String?
+  idempotencyKey        String?
+  userId                String? // Phase 16 (Auth) preparation
+  accountId             String?
+  account               VaultAccount? @relation(fields: [accountId], references: [id])
+  reversalOfId          String? // set on adjustment transactions that reverse a prior one
+  metadata              Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -213,7 +209,9 @@ model VaultTransaction {
   @@index([createdAt])
 }
 
-/* ── Balance history (snapshot on every authoritative change) ── */
+/**
+ * ── Balance history (snapshot on every authoritative change) ──
+ */
 
 model BalanceHistory {
   id         String   @id @default(cuid())
@@ -230,20 +228,22 @@ model BalanceHistory {
   @@index([timestamp])
 }
 
-/* ── Payment methods (cards) — safe references only ── */
+/**
+ * ── Payment methods (cards) — safe references only ──
+ */
 
 model PaymentMethod {
-  id                      String   @id @default(cuid())
-  providerPaymentMethodId String   @unique // Stripe pm_...
-  brand                   String   // visa | mastercard | amex | discover
+  id                      String  @id @default(cuid())
+  providerPaymentMethodId String  @unique // Stripe pm_...
+  brand                   String // visa | mastercard | amex | discover
   last4                   String
   expiryMonth             Int
   expiryYear              Int
-  isDefault               Boolean  @default(false)
-  depositEligible         Boolean  @default(true)
-  withdrawalEligible      Boolean  @default(false)
+  isDefault               Boolean @default(false)
+  depositEligible         Boolean @default(true)
+  withdrawalEligible      Boolean @default(false)
 
-  displayName             String
+  displayName String
 
   accountId String?
   account   VaultAccount? @relation(fields: [accountId], references: [id])
@@ -257,18 +257,20 @@ model PaymentMethod {
   @@index([ownerUserId])
 }
 
-/* ── Bank accounts ── */
+/**
+ * ── Bank accounts ──
+ */
 
 model BankAccount {
-  id                     String   @id @default(cuid())
-  providerBankAccountId  String   @unique
-  bankName               String
-  accountType            String   // checking | savings
-  last4                  String
-  verified               Boolean  @default(false)
-  depositEligible        Boolean  @default(true)
-  withdrawalEligible     Boolean  @default(true)
-  displayName            String
+  id                    String  @id @default(cuid())
+  providerBankAccountId String  @unique
+  bankName              String
+  accountType           String // checking | savings
+  last4                 String
+  verified              Boolean @default(false)
+  depositEligible       Boolean @default(true)
+  withdrawalEligible    Boolean @default(true)
+  displayName           String
 
   accountId String?
   account   VaultAccount? @relation(fields: [accountId], references: [id])
@@ -281,14 +283,16 @@ model BankAccount {
   @@index([ownerUserId])
 }
 
-/* ── Crypto wallets ── */
+/**
+ * ── Crypto wallets ──
+ */
 
 model CryptoWallet {
-  id                String   @id @default(cuid())
-  asset             String   // BTC | ETH | USDC | SOL
-  network           String   // bitcoin | ethereum | solana | etc.
-  address           String
-  label             String
+  id                      String  @id @default(cuid())
+  asset                   String // BTC | ETH | USDC | SOL
+  network                 String // bitcoin | ethereum | solana | etc.
+  address                 String
+  label                   String
   isWithdrawalDestination Boolean @default(false)
 
   // Phase 16 (Auth) preparation.
@@ -301,22 +305,22 @@ model CryptoWallet {
   @@index([ownerUserId])
 }
 
-/* ── Withdrawal destinations ──
- *
+/**
+ * ── Withdrawal destinations ──
  * `approvedAt` is the time at which the destination becomes usable.
  * Until `approvedAt <= now()`, withdrawals to this destination are blocked.
  */
 
 model WithdrawalDestination {
-  id           String   @id @default(cuid())
-  type         String   // bank | card | crypto
-  referenceId  String?
-  label        String
-  asset        String   @default("USD")
-  network      String?
-  address      String?  // stored masked on read; full address kept server-side
-  approved     Boolean  @default(false)
-  approvedAt   DateTime?
+  id          String    @id @default(cuid())
+  type        String // bank | card | crypto
+  referenceId String?
+  label       String
+  asset       String    @default("USD")
+  network     String?
+  address     String? // stored masked on read; full address kept server-side
+  approved    Boolean   @default(false)
+  approvedAt  DateTime?
 
   // Phase 16 (Auth) preparation.
   ownerUserId String?
@@ -328,29 +332,27 @@ model WithdrawalDestination {
   @@index([ownerUserId])
 }
 
-/* ── Provider connections ──
- *
+/**
+ * ── Provider connections ──
  * `state` is the HONEST connection state, distinct from `configured`.
- *
- *   not_configured : env vars missing
- *   configured     : env vars present (adapter can be constructed)
- *   setup_required : env vars present, but adapter is a stub OR user has
- *                   not yet completed the provider-side link flow
- *   connecting     : user is mid-flow (e.g. Plaid Link modal open)
- *   connected      : a genuine provider-side account link exists
- *   restricted    : provider returned a restricted / limited state
- *   error          : provider-side error; needs human attention
- *
+ * not_configured : env vars missing
+ * configured     : env vars present (adapter can be constructed)
+ * setup_required : env vars present, but adapter is a stub OR user has
+ * not yet completed the provider-side link flow
+ * connecting     : user is mid-flow (e.g. Plaid Link modal open)
+ * connected      : a genuine provider-side account link exists
+ * restricted    : provider returned a restricted / limited state
+ * error          : provider-side error; needs human attention
  * Stubs (Stripe/Plaid/Coinbase/Alpaca without SDK) are ALWAYS at most
  * `setup_required`, never `connected`, regardless of env keys.
  */
 
 model ProviderConnection {
-  id            String   @id @default(cuid())
-  type          String   // payment | bank | crypto | broker
-  name          String   // stripe | plaid | coinbase | alpaca
-  state         String   @default("not_configured")
-  displayName   String
+  id          String @id @default(cuid())
+  type        String // payment | bank | crypto | broker
+  name        String // stripe | plaid | coinbase | alpaca
+  state       String @default("not_configured")
+  displayName String
 
   // Encrypted tokens (use VAULT_ENCRYPTION_KEY) — populated only when state=connected
   accessTokenEnc  String?
@@ -367,17 +369,19 @@ model ProviderConnection {
   @@index([ownerUserId])
 }
 
-/* ── Processed provider events (durable idempotency for webhooks) ── */
+/**
+ * ── Processed provider events (durable idempotency for webhooks) ──
+ */
 
 model ProcessedProviderEvent {
-  id              String   @id @default(cuid())
-  provider        String
-  eventId         String
-  eventType       String?
-  ledgerEntryIds  String[] // LedgerEntry IDs created from this event
-  transactionId   String?  // VaultTransaction updated by this event
-  rawPayloadHash  String   // SHA-256 hex of the raw payload
-  processedAt     DateTime @default(now())
+  id             String   @id @default(cuid())
+  provider       String
+  eventId        String
+  eventType      String?
+  ledgerEntryIds String[] // LedgerEntry IDs created from this event
+  transactionId  String? // VaultTransaction updated by this event
+  rawPayloadHash String // SHA-256 hex of the raw payload
+  processedAt    DateTime @default(now())
 
   // Phase 16 (Auth) preparation.
   ownerUserId String?
@@ -388,27 +392,26 @@ model ProcessedProviderEvent {
   @@index([ownerUserId])
 }
 
-/* ── Idempotency records (durable, DB-backed) ──
- *
+/**
+ * ── Idempotency records (durable, DB-backed) ──
  * Same key + same requestHash  → return the cached response.
  * Same key + different hash    → 409 Conflict (key reuse).
- *
  * Records auto-expire after `expiresAt`. TTL is 24h by default.
  */
 
 model IdempotencyRecord {
-  id              String   @id @default(cuid())
+  id          String   @id @default(cuid())
   // User-scoped idempotency. Same (ownerUserId, key) returns the existing
   // record; the same key under a different user is a completely independent
   // operation. NULL ownerUserId is kept for legacy / system-initiated
   // writes that don't carry an owner.
   ownerUserId String?
-  key          String
-  requestHash  String
-  response     Json
-  status       Int
-  createdAt    DateTime @default(now())
-  expiresAt    DateTime
+  key         String
+  requestHash String
+  response    Json
+  status      Int
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
 
   @@unique([ownerUserId, key])
   @@index([expiresAt])
@@ -416,130 +419,136 @@ model IdempotencyRecord {
   @@index([key])
 }
 
-/* ── Auto Fund configuration ── */
-
-model AutoFundConfig {
-  id                    String   @id @default("default")
-  enabled               Boolean  @default(false)
-  fundingSourceId       String?
-  fundingSourceType     String?  // card | bank
-  lowBalanceThreshold   BigInt   @default(100000) // $1000 in cents
-  topUpAmount           BigInt   @default(300000)
-  dailyLimit            BigInt   @default(1000000)
-  monthlyLimit          BigInt   @default(3000000)
-  maxSingleTopUp        BigInt   @default(500000)
-  minTriggerIntervalMs  BigInt   @default(3600000) // 1 hour
-  maxRetries            Int      @default(3)
-  providerReady         Boolean  @default(false)
-
-  // Phase 16 (Auth) preparation.
-  ownerUserId String?
-
-  updatedAt DateTime @updatedAt
-}
-
-/* ── Vault security settings ── */
-
-model VaultSecuritySettings {
-  id                              String   @id @default("default")
-  requireWithdrawalVerification   Boolean  @default(true)
-  twoFactorRequired               Boolean  @default(false)
-  twoFactorConfigured             Boolean  @default(false)
-  newDestinationDelayHours        Int      @default(24)
-  dailyFiatWithdrawalLimit        BigInt   @default(1000000)   // $10,000
-  dailyCryptoWithdrawalLimitFiat  BigInt   @default(500000)    // $5,000
-  largeTransactionThreshold       BigInt   @default(100000)    // $1,000
-  cryptoAddressAllowlist          Json     @default("[]")
-  newDeviceWithdrawalRestriction  Boolean  @default(true)
-  maskSensitiveValues             Boolean  @default(false)
-  sessionTimeoutMin               Int      @default(30)
-
-  // Phase 16 (Auth) preparation.
-  ownerUserId String?
-
-  updatedAt DateTime @updatedAt
-}
-
-/* ════════════════════════════════════════════════════════════════════════════
- * PHASE 16 — AUTHENTICATION + USER OWNERSHIP  (FINAL CORRECTED)
- * ════════════════════════════════════════════════════════════════════════════
- *
- * Architecture (Auth.js v5, FINAL):
- *
- *   - Session strategy = JWT (HttpOnly, Secure, SameSite=Lax cookie).
- *     This is REQUIRED by the Auth.js Credentials provider — combining
- *     Credentials with the database session strategy is forbidden by
- *     Auth.js v5 and silently breaks sign-in. The previous project
- *     revision had this bug; it is corrected here.
- *   - User / Profile / PasswordResetToken / chats / notifications /
- *     SavedItem / AgentMemory — all real rows in Neon.
- *   - Account model field names use snake_case to EXACTLY match what
- *     the @auth/prisma-adapter writes (refresh_token, access_token,
- *     expires_at, token_type, id_token, session_state). Without
- *     this, OAuth writes fail silently because the adapter passes
- *     snake_case keys to Prisma.create().
- *   - Session table is kept for legacy compatibility but is NOT used
- *     by Auth.js when strategy=jwt. The /api/auth/sessions endpoint
- *     honestly reports JWT-only mode.
- *
- * Ownership rules:
- *   - userId is ALWAYS derived from the authenticated session on the server
- *   - Never trust userId from the request body
- *   - All queries scope by userId / ownerUserId
- *   - Cross-user access must be impossible at the query layer
- *
- * Password storage:
- *   - bcryptjs (pure-JS, Vercel-serverless-safe) hash with cost factor 12
- *   - passwordHash is NEVER returned to the client (Prisma `select` excludes it)
- *   - Plain-text password is NEVER logged or persisted
- *
- * Migration chain (FRESH-EMPTY-DB SAFE):
- *   - One consolidated init migration creates every Vault + Auth + user-data
- *     table in the correct FK order. There are no ALTER-only migrations that
- *     assume pre-existing tables. `npx prisma migrate deploy` on a totally
- *     empty Postgres database succeeds end-to-end.
- *   - All `ownerUserId` / `userId` columns are nullable TEXT without FK so
- *     legacy rows from before Phase 16 don't break the schema.
+/**
+ * ── Auto Fund configuration ──
  */
 
-/* ── User ── */
+model AutoFundConfig {
+  id                   String  @id @default("default")
+  enabled              Boolean @default(false)
+  fundingSourceId      String?
+  fundingSourceType    String? // card | bank
+  lowBalanceThreshold  BigInt  @default(100000) // $1000 in cents
+  topUpAmount          BigInt  @default(300000)
+  dailyLimit           BigInt  @default(1000000)
+  monthlyLimit         BigInt  @default(3000000)
+  maxSingleTopUp       BigInt  @default(500000)
+  minTriggerIntervalMs BigInt  @default(3600000) // 1 hour
+  maxRetries           Int     @default(3)
+  providerReady        Boolean @default(false)
+
+  // Phase 16 (Auth) preparation.
+  ownerUserId String?
+
+  updatedAt DateTime @updatedAt
+}
+
+/**
+ * ── Vault security settings ──
+ */
+
+model VaultSecuritySettings {
+  id                             String  @id @default("default")
+  requireWithdrawalVerification  Boolean @default(true)
+  twoFactorRequired              Boolean @default(false)
+  twoFactorConfigured            Boolean @default(false)
+  newDestinationDelayHours       Int     @default(24)
+  dailyFiatWithdrawalLimit       BigInt  @default(1000000) // $10,000
+  dailyCryptoWithdrawalLimitFiat BigInt  @default(500000) // $5,000
+  largeTransactionThreshold      BigInt  @default(100000) // $1,000
+  cryptoAddressAllowlist         Json    @default("[]")
+  newDeviceWithdrawalRestriction Boolean @default(true)
+  maskSensitiveValues            Boolean @default(false)
+  sessionTimeoutMin              Int     @default(30)
+
+  // Phase 16 (Auth) preparation.
+  ownerUserId String?
+
+  updatedAt DateTime @updatedAt
+}
+
+/**
+ * ════════════════════════════════════════════════════════════════════════════
+ * PHASE 16 — AUTHENTICATION + USER OWNERSHIP  (FINAL CORRECTED)
+ * ════════════════════════════════════════════════════════════════════════════
+ * Architecture (Auth.js v5, FINAL):
+ * - Session strategy = JWT (HttpOnly, Secure, SameSite=Lax cookie).
+ * This is REQUIRED by the Auth.js Credentials provider — combining
+ * Credentials with the database session strategy is forbidden by
+ * Auth.js v5 and silently breaks sign-in. The previous project
+ * revision had this bug; it is corrected here.
+ * - User / Profile / PasswordResetToken / chats / notifications /
+ * SavedItem / AgentMemory — all real rows in Neon.
+ * - Account model field names use snake_case to EXACTLY match what
+ * the @auth/prisma-adapter writes (refresh_token, access_token,
+ * expires_at, token_type, id_token, session_state). Without
+ * this, OAuth writes fail silently because the adapter passes
+ * snake_case keys to Prisma.create().
+ * - Session table is kept for legacy compatibility but is NOT used
+ * by Auth.js when strategy=jwt. The /api/auth/sessions endpoint
+ * honestly reports JWT-only mode.
+ * Ownership rules:
+ * - userId is ALWAYS derived from the authenticated session on the server
+ * - Never trust userId from the request body
+ * - All queries scope by userId / ownerUserId
+ * - Cross-user access must be impossible at the query layer
+ * Password storage:
+ * - bcryptjs (pure-JS, Vercel-serverless-safe) hash with cost factor 12
+ * - passwordHash is NEVER returned to the client (Prisma `select` excludes it)
+ * - Plain-text password is NEVER logged or persisted
+ * Migration chain (FRESH-EMPTY-DB SAFE):
+ * - One consolidated init migration creates every Vault + Auth + user-data
+ * table in the correct FK order. There are no ALTER-only migrations that
+ * assume pre-existing tables. `npx prisma migrate deploy` on a totally
+ * empty Postgres database succeeds end-to-end.
+ * - All `ownerUserId` / `userId` columns are nullable TEXT without FK so
+ * legacy rows from before Phase 16 don't break the schema.
+ */
+
+/**
+ * ── User ──
+ */
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  username      String   @unique
-  emailVerified DateTime?
-  name          String?
-  image         String?
-  passwordHash  String?
-  status        String   @default("active")
+  id             String    @id @default(cuid())
+  email          String    @unique
+  username       String    @unique
+  emailVerified  DateTime?
+  name           String?
+  image          String?
+  passwordHash   String?
+  status         String    @default("active")
   // JWT revocation version. The JWT carries the version that was current
   // at sign-in; every authenticated server-side resolution compares the
   // JWT version against this column. Password change / reset / security
   // reset bump it, invalidating every previously-issued JWT for this user.
-  sessionVersion Int     @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  sessionVersion Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  accounts      Account[]
-  sessions      Session[]
-  profile       Profile?
+  accounts            Account[]
+  sessions            Session[]
+  profile             Profile?
   passwordResetTokens PasswordResetToken[]
-  chatConversations  ChatConversation[]
-  agentMemory        AgentMemory[]
-  notifications      UserNotification[]
-  savedItems         SavedItem[]
-  dataMigrations     UserDataMigration[]
-  cloudProjects      CloudWorkspaceProject[]
-  tradingSandbox     TradingSandboxAccount?
+  chatConversations   ChatConversation[]
+  agentMemory         AgentMemory[]
+  notifications       UserNotification[]
+  savedItems          SavedItem[]
+  dataMigrations      UserDataMigration[]
+  cloudProjects       CloudWorkspaceProject[]
+  tradingSandbox      TradingSandboxAccount?
   exchangeConnections ExchangeConnection[]
+  tradingAgentProfile TradingAgentProfile?
+  liveTradeIntents    LiveTradeIntent[]
 
   @@index([status])
   @@index([username])
 }
 
-/* Authenticated cloud snapshot for DevWorkspace. The browser IndexedDB copy
- * remains an offline cache; this row is the cross-tab/device source of truth. */
+/**
+ * Authenticated cloud snapshot for DevWorkspace. The browser IndexedDB copy
+ * remains an offline cache; this row is the cross-tab/device source of truth.
+ */
 model CloudWorkspaceProject {
   id        String   @id
   userId    String
@@ -555,8 +564,10 @@ model CloudWorkspaceProject {
   @@index([userId, updatedAt])
 }
 
-/* Persistent paper/sandbox account. Values are stored as a versioned JSON
- * snapshot because the existing trading engine has a rich order shape. */
+/**
+ * Persistent paper/sandbox account. Values are stored as a versioned JSON
+ * snapshot because the existing trading engine has a rich order shape.
+ */
 model TradingSandboxAccount {
   id        String   @id @default(cuid())
   userId    String   @unique
@@ -569,8 +580,10 @@ model TradingSandboxAccount {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-/* Per-user exchange OAuth credentials. Tokens are always AES-256-GCM
- * encrypted before persistence and never returned to the browser. */
+/**
+ * Per-user exchange OAuth credentials. Tokens are always AES-256-GCM
+ * encrypted before persistence and never returned to the browser.
+ */
 model ExchangeConnection {
   id              String   @id @default(cuid())
   userId          String
@@ -592,13 +605,60 @@ model ExchangeConnection {
   @@index([provider, state])
 }
 
-/* ── Account ── (OAuth provider accounts, managed by Auth.js Prisma adapter)
- *
+/**
+ * Server-authoritative real-trading permission envelope. Seeing the Coinbase
+ * account balance never grants spending authority: allocationUsd is the hard
+ * ceiling assigned to LUCIAN's Economic Agent.
+ */
+model TradingAgentProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  allocationUsd  Decimal  @default(0) @db.Decimal(18, 8)
+  maxOrderUsd    Decimal  @default(50) @db.Decimal(18, 8)
+  permissionMode String   @default("assisted") // advisor | assisted | operator | autonomous
+  emergencyStop  Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/**
+ * Immutable-enough audit record for every preview and submitted live order.
+ * Provider payloads are retained for reconciliation without exposing secrets.
+ */
+model LiveTradeIntent {
+  id              String    @id @default(cuid())
+  userId          String
+  clientOrderId   String    @unique
+  providerOrderId String?
+  previewId       String?
+  productId       String
+  side            String
+  quoteSize       Decimal?  @db.Decimal(30, 12)
+  baseSize        Decimal?  @db.Decimal(30, 12)
+  initiatedBy     String    @default("user")
+  state           String    @default("previewed")
+  preview         Json?
+  execution       Json?
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, state, createdAt])
+  @@index([userId, productId, createdAt])
+}
+
+/**
+ * ── Account ── (OAuth provider accounts, managed by Auth.js Prisma adapter)
  * Field names MUST be snake_case to match the official @auth/prisma-adapter
  * schema. The adapter writes fields like `refresh_token`, `access_token`,
  * `expires_at`, `token_type`, `id_token`, `session_state` directly via
  * Prisma.create — using camelCase Prisma field names without `@map`
- * causes the write to fail. */
+ * causes the write to fail.
+ */
 
 model Account {
   id                String  @id @default(cuid())
@@ -606,13 +666,13 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token      String?  @map("refresh_token")
-  access_token       String?  @map("access_token")
-  expires_at         Int?     @map("expires_at")
-  token_type         String?  @map("token_type")
-  scope              String?
-  id_token           String?  @map("id_token")
-  session_state      String?  @map("session_state")
+  refresh_token     String? @map("refresh_token")
+  access_token      String? @map("access_token")
+  expires_at        Int?    @map("expires_at")
+  token_type        String? @map("token_type")
+  scope             String?
+  id_token          String? @map("id_token")
+  session_state     String? @map("session_state")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -623,13 +683,15 @@ model Account {
   @@index([userId])
 }
 
-/* ── Session ── (kept for legacy compatibility; NOT used under JWT strategy) */
+/**
+ * ── Session ── (kept for legacy compatibility; NOT used under JWT strategy)
+ */
 
 model Session {
   id           String   @id @default(cuid())
-  sessionToken  String   @unique
+  sessionToken String   @unique
   userId       String
-  expires       DateTime
+  expires      DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -640,7 +702,9 @@ model Session {
   @@index([expires])
 }
 
-/* ── VerificationToken ── (Auth.js email + OAuth verification) */
+/**
+ * ── VerificationToken ── (Auth.js email + OAuth verification)
+ */
 
 model VerificationToken {
   identifier String
@@ -653,7 +717,9 @@ model VerificationToken {
   @@index([identifier])
 }
 
-/* ── Profile ── (one-to-one with User; display-facing fields) */
+/**
+ * ── Profile ── (one-to-one with User; display-facing fields)
+ */
 
 model Profile {
   id          String   @id @default(cuid())
@@ -669,15 +735,17 @@ model Profile {
   @@index([userId])
 }
 
-/* ── PasswordResetToken ── (one-time, expiring, user-bound) */
+/**
+ * ── PasswordResetToken ── (one-time, expiring, user-bound)
+ */
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  token     String   @unique
+  token     String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -685,7 +753,9 @@ model PasswordResetToken {
   @@index([expiresAt])
 }
 
-/* ── ChatConversation ── (user-owned AI chat sessions) */
+/**
+ * ── ChatConversation ── (user-owned AI chat sessions)
+ */
 
 model ChatConversation {
   id        String   @id @default(cuid())
@@ -697,28 +767,30 @@ model ChatConversation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages ChatMessage[]
 
   @@index([userId, source])
   @@index([updatedAt])
 }
 
-/* ── ChatMessage ── */
+/**
+ * ── ChatMessage ──
+ */
 
 model ChatMessage {
-  id              String   @id @default(cuid())
-  conversationId  String
+  id             String   @id @default(cuid())
+  conversationId String
   // Stable client-supplied dedupe id. When the client retries a sync
   // (network down) with the same messageId, the server returns the
   // existing row instead of creating a duplicate. NULL is allowed for
   // legacy / server-only messages that don't carry a client id.
-  messageId       String?
-  role            String
-  content         String
-  model           String?
-  provider        String?
-  createdAt       DateTime @default(now())
+  messageId      String?
+  role           String
+  content        String
+  model          String?
+  provider       String?
+  createdAt      DateTime @default(now())
 
   conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -726,7 +798,9 @@ model ChatMessage {
   @@index([conversationId, createdAt])
 }
 
-/* ── AgentMemory ── (persistent user-level memory, NOT project files) */
+/**
+ * ── AgentMemory ── (persistent user-level memory, NOT project files)
+ */
 
 model AgentMemory {
   id        String   @id @default(cuid())
@@ -743,24 +817,26 @@ model AgentMemory {
   @@index([userId, scope])
 }
 
-/* ── UserNotification ── (server-backed user-owned notifications) */
+/**
+ * ── UserNotification ── (server-backed user-owned notifications)
+ */
 
 model UserNotification {
-  id           String   @id @default(cuid())
-  userId       String
-  source       String
-  title        String
-  message      String
-  level        String   @default("info")
-  actionable   Boolean  @default(false)
-  resolved     Boolean  @default(false)
-  readAt       DateTime?
-  dismissedAt  DateTime?
-  dedupeKey    String?
-  entityRef    String?
-  deepLink     String?
-  lastTriggerAt DateTime @default(now())
-  createdAt    DateTime @default(now())
+  id            String    @id @default(cuid())
+  userId        String
+  source        String
+  title         String
+  message       String
+  level         String    @default("info")
+  actionable    Boolean   @default(false)
+  resolved      Boolean   @default(false)
+  readAt        DateTime?
+  dismissedAt   DateTime?
+  dedupeKey     String?
+  entityRef     String?
+  deepLink      String?
+  lastTriggerAt DateTime  @default(now())
+  createdAt     DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -769,7 +845,9 @@ model UserNotification {
   @@index([userId, createdAt])
 }
 
-/* ── SavedItem ── (user-owned bookmarks / favorites across modules) */
+/**
+ * ── SavedItem ── (user-owned bookmarks / favorites across modules)
+ */
 
 model SavedItem {
   id        String   @id @default(cuid())
@@ -788,17 +866,19 @@ model SavedItem {
   @@index([userId, createdAt])
 }
 
-/* ── UserDataMigration ── (local -> server migration state per user/category) */
+/**
+ * ── UserDataMigration ── (local -> server migration state per user/category)
+ */
 
 model UserDataMigration {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
   category    String
-  status      String   @default("pending")
-  version     Int      @default(1)
-  recordCount Int      @default(0)
+  status      String    @default("pending")
+  version     Int       @default(1)
+  recordCount Int       @default(0)
   migratedAt  DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

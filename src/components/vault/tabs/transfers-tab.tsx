@@ -7,7 +7,7 @@
 // Withdrawal is NOT an internal transfer — money leaves the LUCIAN
 // financial environment. Withdrawals live in the Withdraw modal.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeftRight, Wallet, TrendingUp, AlertCircle, Plus, Minus, ArrowRight,
 } from "lucide-react";
@@ -90,6 +90,7 @@ function BudgetAllocationSection() {
 
   return (
     <div className="space-y-5">
+      <LiveAgentCapitalCard />
       <VaultCard>
         <VaultCardHeader
           title="Budget Allocation"
@@ -206,6 +207,125 @@ function BudgetAllocationSection() {
       </VaultCard>
     </div>
   );
+}
+
+type AgentCapitalState = {
+  profile: { allocationUsd: number; maxOrderUsd: number; permissionMode: string; emergencyStop: boolean };
+  actualUsdAvailable: number;
+  availableAgentUsd: number;
+  netCashDeployed: number;
+  reservedUsd: number;
+  error?: string;
+};
+
+function LiveAgentCapitalCard() {
+  const [state, setState] = useState<AgentCapitalState | null>(null);
+  const [amount, setAmount] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/trading/agent-capital", { cache: "no-store" })
+      .then(async (response) => ({ response, data: await response.json() as AgentCapitalState }))
+      .then(({ response, data }) => {
+        if (!active) return;
+        setState(data);
+        if (response.ok) setAmount(String(data.profile.allocationUsd));
+      })
+      .catch(() => { if (active) setState(null); });
+    return () => { active = false; };
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const response = await fetch("/api/trading/agent-capital", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allocationUsd: Number(amount) }),
+      });
+      const data = await response.json() as AgentCapitalState;
+      if (!response.ok) throw new Error(data.error ?? "Could not update Agent Capital.");
+      setState(data);
+      toast({ title: "Agent Capital updated", description: `LUCIAN may trade up to $${data.profile.allocationUsd.toFixed(2)} under the configured limits.` });
+    } catch (error) {
+      toast({ title: "Agent Capital update failed", description: error instanceof Error ? error.message : "Unknown error", variant: "destructive" });
+    } finally { setSaving(false); }
+  }
+
+  async function updateControls(patch: Record<string, unknown>) {
+    setSaving(true);
+    try {
+      const response = await fetch("/api/trading/agent-capital", {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
+      });
+      const data = await response.json() as AgentCapitalState;
+      if (!response.ok) throw new Error(data.error ?? "Could not update trading controls.");
+      setState(data);
+    } catch (error) {
+      toast({ title: "Trading control update failed", description: error instanceof Error ? error.message : "Unknown error", variant: "destructive" });
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <VaultCard>
+      <VaultCardHeader title="Live Agent Capital" subtitle="Cross-device · Coinbase-backed · Server-enforced" icon={<TrendingUp className="h-4 w-4" />} />
+      <VaultCardBody>
+        {!state || state.error ? (
+          <div className="rounded border border-amber-500/30 bg-amber-500/5 p-3 text-[11px] text-amber-200/80">
+            Connect and enable Coinbase live trading to manage real Agent Capital.
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <CapitalMetric label="Coinbase available" value={state.actualUsdAvailable} />
+              <CapitalMetric label="Agent allocation" value={state.profile.allocationUsd} />
+              <CapitalMetric label="Agent available" value={state.availableAgentUsd} accent />
+              <CapitalMetric label="Deployed / reserved" value={state.netCashDeployed + state.reservedUsd} />
+            </div>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <Label className="text-[11px] uppercase tracking-wider text-fg-muted">Agent Capital limit (USD)</Label>
+                <Input type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-1.5 font-mono text-[12px]" />
+              </div>
+              <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Set Agent Capital"}</Button>
+            </div>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <label className="text-[11px] text-fg-muted">
+                Permission mode
+                <select
+                  value={state.profile.permissionMode}
+                  disabled={saving}
+                  onChange={(event) => void updateControls({ permissionMode: event.target.value })}
+                  className="ml-2 rounded border border-line-muted bg-surface px-2 py-1 text-[11px] text-fg"
+                >
+                  <option value="advisor">Advisor (no trades)</option>
+                  <option value="assisted">Assisted (preview + confirm)</option>
+                  <option value="operator">Operator (preview + confirm)</option>
+                  <option value="autonomous">Autonomous policy (confirmation enforced)</option>
+                </select>
+              </label>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={saving}
+                onClick={() => void updateControls({ emergencyStop: !state.profile.emergencyStop })}
+                className={state.profile.emergencyStop ? "border-red-500/50 text-red-300" : "sm:ml-auto border-line-muted"}
+              >
+                {state.profile.emergencyStop ? "Emergency stop ON — click to resume" : "Activate emergency stop"}
+              </Button>
+            </div>
+            <div className="mt-3 flex items-start gap-1.5 rounded border border-emerald-500/25 bg-emerald-500/5 p-2.5 text-[10.5px] leading-relaxed text-fg-muted">
+              The Economic Agent can read the full balance but can spend only this allocation. Per-order maximum: ${state.profile.maxOrderUsd.toFixed(2)}. Withdrawals are not available to the agent.
+            </div>
+          </>
+        )}
+      </VaultCardBody>
+    </VaultCard>
+  );
+}
+
+function CapitalMetric({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
+  return <div className="rounded-md border border-line-muted bg-surface p-3 themed"><div className="text-[10px] uppercase tracking-wider text-fg-faint">{label}</div><div className={cn("mt-1 font-mono text-[14px] font-semibold", accent ? "text-emerald-400" : "text-fg")}>${value.toFixed(2)}</div></div>;
 }
 
 /* ── Actual Transfer ── */

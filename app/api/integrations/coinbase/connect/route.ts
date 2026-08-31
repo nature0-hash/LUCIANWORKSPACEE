@@ -3,12 +3,17 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { requireUserId } from "@/lib/auth/session";
 import { encryptSecret } from "@/lib/security/encryption";
+import { coinbaseAuthMode } from "@/lib/coinbase/client";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
     const userId = await requireUserId();
+    if (coinbaseAuthMode() === "api-key") {
+      const appUrl = process.env.AUTH_APP_URL ?? "http://localhost:3000";
+      return NextResponse.redirect(new URL("/markets?coinbase=server-connected", appUrl));
+    }
     const clientId = process.env.COINBASE_CLIENT_ID;
     const redirectUri = process.env.COINBASE_REDIRECT_URI;
     if (!clientId || !redirectUri || !process.env.COINBASE_CLIENT_SECRET) {
