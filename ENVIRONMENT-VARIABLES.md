@@ -1,5 +1,37 @@
 # Environment Variables
 
+## Coinbase owner account (implemented)
+
+Required in Vercel Production:
+
+```text
+COINBASE_AUTH_MODE=api-key
+COINBASE_API_KEY_NAME=organizations/.../apiKeys/...
+COINBASE_API_PRIVATE_KEY=-----BEGIN EC PRIVATE KEY-----\n...\n-----END EC PRIVATE KEY-----
+COINBASE_API_KEY_ALGORITHM=ES256
+LUCIAN_OWNER_EMAIL=the exact LUCIAN owner login email
+```
+
+Safety controls for the transfer-enabled Vault:
+
+```text
+TRADING_MODE=sandbox
+NEXT_PUBLIC_TRADING_MODE=sandbox
+LIVE_TRADING_ENABLED=false
+AI_TRADING_ENABLED=false
+COINBASE_TRANSFERS_ENABLED=false
+COINBASE_MAX_SEND_USD=50
+COINBASE_SEND_ALLOWED_ASSETS=BTC,ETH,USDC,SOL
+COINBASE_SEND_ALLOWED_NETWORKS=bitcoin,ethereum,base,solana
+NEXT_PUBLIC_TRADING_CLOUD_SYNC_ENABLED=true
+NEXT_PUBLIC_WORKSPACE_CLOUD_SYNC_ENABLED=true
+```
+
+`COINBASE_TRANSFERS_ENABLED` controls external sends only. Coinbase receive
+addresses remain available while it is false. Enable it only after a small
+receive test and after confirming the displayed account balances. Never put a
+Coinbase private key in a `NEXT_PUBLIC_*` variable or commit it to Git.
+
 Use `.env.example` as the complete source list. The variables below are the ones relevant to this delivery.
 
 ## Required for accounts, Vault, cloud projects, and persistent trading

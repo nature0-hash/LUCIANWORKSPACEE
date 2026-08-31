@@ -31,6 +31,7 @@ import {
 } from "@/components/ui-devspace/dialog";
 import { toast } from "@/hooks/use-toast";
 import { useVaultSync } from "@/components/vault/vault-sync-context";
+import { CoinbaseMoneyCenter } from "@/components/vault/coinbase-money-center";
 
 export function MoneyTab({
   onAddMoney,
@@ -63,6 +64,11 @@ export function MoneyTab({
       </div>
 
       {!providerConnected && <ProviderNotConnectedBanner />}
+
+      {/* Live Coinbase receive/send controls. Server ownership, password
+          verification, confirmation text, limits, and kill switches are
+          enforced independently of this client UI. */}
+      <CoinbaseMoneyCenter />
 
       {/* Payment Methods */}
       <VaultCard>

@@ -540,6 +540,8 @@ model User {
   exchangeConnections ExchangeConnection[]
   tradingAgentProfile TradingAgentProfile?
   liveTradeIntents    LiveTradeIntent[]
+  coinbaseReceiveAddresses CoinbaseReceiveAddress[]
+  coinbaseTransferIntents  CoinbaseTransferIntent[]
 
   @@index([status])
   @@index([username])
@@ -649,6 +651,60 @@ model LiveTradeIntent {
 
   @@index([userId, state, createdAt])
   @@index([userId, productId, createdAt])
+}
+
+/**
+ * Coinbase-generated deposit addresses. Addresses are not secrets, but are
+ * scoped to their authenticated owner and retained for cross-device history.
+ */
+model CoinbaseReceiveAddress {
+  id                String   @id @default(cuid())
+  userId            String
+  coinbaseAccountId String
+  providerAddressId String
+  asset             String
+  network           String
+  address           String
+  label             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, providerAddressId])
+  @@index([userId, asset, network, createdAt])
+}
+
+/**
+ * Owner-controlled outbound Coinbase sends. A preview expires quickly and
+ * can be submitted only once after password re-verification and an exact
+ * confirmation phrase. The Economic Agent has no relationship or tool that
+ * can confirm one of these records.
+ */
+model CoinbaseTransferIntent {
+  id                    String    @id @default(cuid())
+  userId                String
+  idempotencyKey        String    @unique
+  coinbaseAccountId     String
+  asset                 String
+  network               String
+  destination           String
+  destinationTag        String?
+  amount                Decimal   @db.Decimal(36, 18)
+  estimatedUsd          Decimal   @db.Decimal(24, 8)
+  confirmationText      String
+  state                 String    @default("previewed")
+  providerTransactionId String?
+  providerResponse      Json?
+  expiresAt             DateTime
+  confirmedAt           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, state, createdAt])
+  @@index([userId, providerTransactionId])
 }
 
 /**
