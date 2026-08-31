@@ -31,7 +31,7 @@ import {
 } from "@/components/ui-devspace/dialog";
 import { toast } from "@/hooks/use-toast";
 import { useVaultSync } from "@/components/vault/vault-sync-context";
-import { CoinbaseMoneyCenter } from "@/components/vault/coinbase-money-center";
+import { QuidaxMoneyCenter } from "@/components/vault/coinbase-money-center";
 
 export function MoneyTab({
   onAddMoney,
@@ -43,8 +43,6 @@ export function MoneyTab({
   onTransfer: () => void;
 }) {
   const store = useVaultStore();
-  const providerConnected = store.balances.providerConnected;
-
   return (
     <div className="space-y-5">
       {/* Top action bar */}
@@ -63,12 +61,10 @@ export function MoneyTab({
         </Button>
       </div>
 
-      {!providerConnected && <ProviderNotConnectedBanner />}
-
-      {/* Live Coinbase receive/send controls. Server ownership, password
+      {/* Live Quidax receive/send controls. Server ownership, password
           verification, confirmation text, limits, and kill switches are
           enforced independently of this client UI. */}
-      <CoinbaseMoneyCenter />
+      <QuidaxMoneyCenter />
 
       {/* Payment Methods */}
       <VaultCard>

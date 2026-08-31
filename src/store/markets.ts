@@ -777,7 +777,7 @@ export const useMarketsStore = create<MarketsState>((set, get) => ({
 
   placeMarketOrder: (symbol, side, entryPrice, volume, stopLoss = 0, takeProfit = 0) => {
     if (get().accountMode === "real") {
-      return { success: false, error: "Live orders require the Coinbase preview and confirmation flow. Switch to Virtual until Coinbase is connected and live trading is enabled." };
+      return { success: false, error: "Live orders require the Quidax preview and confirmation flow. Switch to Virtual until Quidax is connected and live trading is enabled." };
     }
     const rules = get().riskRules;
     const result = openPosition(
@@ -797,7 +797,7 @@ export const useMarketsStore = create<MarketsState>((set, get) => ({
 
   placePending: (symbol, side, orderType, price, volume, stopLoss = 0, takeProfit = 0) => {
     if (get().accountMode === "real") {
-      return { success: false, error: "Live pending orders are locked until the Coinbase confirmation UI is enabled." };
+      return { success: false, error: "Live pending orders are locked until the Quidax confirmation UI is enabled." };
     }
     const rules = get().riskRules;
     const result = placePendingOrder(

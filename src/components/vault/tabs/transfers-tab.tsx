@@ -210,6 +210,7 @@ function BudgetAllocationSection() {
 }
 
 type AgentCapitalState = {
+  quoteCurrency: "NGN" | "USDT";
   profile: { allocationUsd: number; maxOrderUsd: number; permissionMode: string; emergencyStop: boolean };
   actualUsdAvailable: number;
   availableAgentUsd: number;
@@ -246,7 +247,7 @@ function LiveAgentCapitalCard() {
       const data = await response.json() as AgentCapitalState;
       if (!response.ok) throw new Error(data.error ?? "Could not update Agent Capital.");
       setState(data);
-      toast({ title: "Agent Capital updated", description: `LUCIAN may trade up to $${data.profile.allocationUsd.toFixed(2)} under the configured limits.` });
+      toast({ title: "Agent Capital updated", description: `LUCIAN may trade up to ${data.profile.allocationUsd.toFixed(2)} ${data.quoteCurrency} under the configured limits.` });
     } catch (error) {
       toast({ title: "Agent Capital update failed", description: error instanceof Error ? error.message : "Unknown error", variant: "destructive" });
     } finally { setSaving(false); }
@@ -268,23 +269,23 @@ function LiveAgentCapitalCard() {
 
   return (
     <VaultCard>
-      <VaultCardHeader title="Live Agent Capital" subtitle="Cross-device · Coinbase-backed · Server-enforced" icon={<TrendingUp className="h-4 w-4" />} />
+      <VaultCardHeader title="Live Agent Capital" subtitle="Cross-device · Quidax-backed · Server-enforced" icon={<TrendingUp className="h-4 w-4" />} />
       <VaultCardBody>
         {!state || state.error ? (
           <div className="rounded border border-amber-500/30 bg-amber-500/5 p-3 text-[11px] text-amber-200/80">
-            Connect and enable Coinbase live trading to manage real Agent Capital.
+            Connect Quidax and complete the balance test before enabling live trading.
           </div>
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <CapitalMetric label="Coinbase available" value={state.actualUsdAvailable} />
-              <CapitalMetric label="Agent allocation" value={state.profile.allocationUsd} />
-              <CapitalMetric label="Agent available" value={state.availableAgentUsd} accent />
-              <CapitalMetric label="Deployed / reserved" value={state.netCashDeployed + state.reservedUsd} />
+              <CapitalMetric label="Quidax available" value={state.actualUsdAvailable} currency={state.quoteCurrency} />
+              <CapitalMetric label="Agent allocation" value={state.profile.allocationUsd} currency={state.quoteCurrency} />
+              <CapitalMetric label="Agent available" value={state.availableAgentUsd} currency={state.quoteCurrency} accent />
+              <CapitalMetric label="Deployed / reserved" value={state.netCashDeployed + state.reservedUsd} currency={state.quoteCurrency} />
             </div>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
               <div className="flex-1">
-                <Label className="text-[11px] uppercase tracking-wider text-fg-muted">Agent Capital limit (USD)</Label>
+                <Label className="text-[11px] uppercase tracking-wider text-fg-muted">Agent Capital limit ({state.quoteCurrency})</Label>
                 <Input type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-1.5 font-mono text-[12px]" />
               </div>
               <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Set Agent Capital"}</Button>
@@ -315,7 +316,7 @@ function LiveAgentCapitalCard() {
               </Button>
             </div>
             <div className="mt-3 flex items-start gap-1.5 rounded border border-emerald-500/25 bg-emerald-500/5 p-2.5 text-[10.5px] leading-relaxed text-fg-muted">
-              The Economic Agent can read the full balance but can spend only this allocation. Per-order maximum: ${state.profile.maxOrderUsd.toFixed(2)}. Withdrawals are not available to the agent.
+              The Economic Agent can read the full balance but can spend only this allocation. Per-order maximum: {state.profile.maxOrderUsd.toFixed(2)} {state.quoteCurrency}. Withdrawals are not available to the agent.
             </div>
           </>
         )}
@@ -324,8 +325,8 @@ function LiveAgentCapitalCard() {
   );
 }
 
-function CapitalMetric({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
-  return <div className="rounded-md border border-line-muted bg-surface p-3 themed"><div className="text-[10px] uppercase tracking-wider text-fg-faint">{label}</div><div className={cn("mt-1 font-mono text-[14px] font-semibold", accent ? "text-emerald-400" : "text-fg")}>${value.toFixed(2)}</div></div>;
+function CapitalMetric({ label, value, currency, accent = false }: { label: string; value: number; currency: string; accent?: boolean }) {
+  return <div className="rounded-md border border-line-muted bg-surface p-3 themed"><div className="text-[10px] uppercase tracking-wider text-fg-faint">{label}</div><div className={cn("mt-1 font-mono text-[14px] font-semibold", accent ? "text-emerald-400" : "text-fg")}>{value.toFixed(2)} {currency}</div></div>;
 }
 
 /* ── Actual Transfer ── */
