@@ -8,12 +8,13 @@ import { coinbaseFetch, isCoinbaseConfigured } from "@/lib/coinbase/client";
 type CoinbaseMoney = { amount?: string; currency?: string };
 type CoinbaseAccount = {
   id?: string;
+  uuid?: string;
   name?: string;
   primary?: boolean;
   type?: string;
-  currency?: { code?: string; name?: string; color?: string; asset_id?: string };
-  balance?: CoinbaseMoney;
-  available_balance?: CoinbaseMoney;
+  currency?: string | { code?: string; name?: string; color?: string; asset_id?: string };
+  balance?: CoinbaseMoney & { value?: string };
+  available_balance?: CoinbaseMoney & { value?: string };
 };
 
 type CoinbaseAddress = {
@@ -49,11 +50,12 @@ function positiveDecimal(value: unknown): string {
 }
 
 function accountAsset(account: CoinbaseAccount): string {
-  return String(account.currency?.code ?? account.balance?.currency ?? account.available_balance?.currency ?? "").toUpperCase();
+  const currency = typeof account.currency === "string" ? account.currency : account.currency?.code;
+  return String(currency ?? account.balance?.currency ?? account.available_balance?.currency ?? "").toUpperCase();
 }
 
 function accountAvailable(account: CoinbaseAccount): number {
-  return Number(account.available_balance?.amount ?? account.balance?.amount ?? 0);
+  return Number(account.available_balance?.value ?? account.available_balance?.amount ?? account.balance?.value ?? account.balance?.amount ?? 0);
 }
 
 function assertAccountId(value: unknown): string {
@@ -103,19 +105,28 @@ export function coinbaseTransferSettings() {
 }
 
 export async function listWalletAccounts(userId: string): Promise<Array<{ id: string; name: string; asset: string; balance: string; available: string; primary: boolean; type: string }>> {
-  const response = await coinbaseFetch(userId, "/v2/accounts?limit=100");
-  const payload = await jsonOrError(response, "Coinbase could not return wallet accounts.");
-  const data = Array.isArray(payload.data) ? payload.data as CoinbaseAccount[] : [];
+  // CDP portfolio keys can return an empty legacy /v2 account list while the
+  // same consumer portfolio is correctly exposed by Advanced Trade. Prefer
+  // Advanced Trade, which is also the account source used by Markets and the
+  // trading engine, then retain /v2 as a compatibility fallback.
+  const advancedResponse = await coinbaseFetch(userId, "/api/v3/brokerage/accounts?limit=250");
+  const advancedPayload = await jsonOrError(advancedResponse, "Coinbase could not return Advanced Trade wallet accounts.");
+  let data = Array.isArray(advancedPayload.accounts) ? advancedPayload.accounts as CoinbaseAccount[] : [];
+  if (data.length === 0) {
+    const legacyResponse = await coinbaseFetch(userId, "/v2/accounts?limit=100");
+    const legacyPayload = await jsonOrError(legacyResponse, "Coinbase could not return wallet accounts.");
+    data = Array.isArray(legacyPayload.data) ? legacyPayload.data as CoinbaseAccount[] : [];
+  }
   return data.flatMap((account) => {
-    const id = String(account.id ?? "");
+    const id = String(account.uuid ?? account.id ?? "");
     const asset = accountAsset(account);
     if (!ACCOUNT_ID_RE.test(id) || !ASSET_RE.test(asset)) return [];
     return [{
       id,
       name: String(account.name ?? `${asset} Wallet`),
       asset,
-      balance: String(account.balance?.amount ?? account.available_balance?.amount ?? "0"),
-      available: String(account.available_balance?.amount ?? account.balance?.amount ?? "0"),
+      balance: String(account.balance?.value ?? account.balance?.amount ?? account.available_balance?.value ?? account.available_balance?.amount ?? "0"),
+      available: String(account.available_balance?.value ?? account.available_balance?.amount ?? account.balance?.value ?? account.balance?.amount ?? "0"),
       primary: account.primary === true,
       type: String(account.type ?? "wallet"),
     }];
@@ -123,10 +134,14 @@ export async function listWalletAccounts(userId: string): Promise<Array<{ id: st
 }
 
 async function getWalletAccount(userId: string, accountId: string): Promise<CoinbaseAccount> {
-  const response = await coinbaseFetch(userId, `/v2/accounts/${encodeURIComponent(accountId)}`);
-  const payload = await jsonOrError(response, "Coinbase could not verify the selected wallet account.");
-  const account = payload.data as CoinbaseAccount | undefined;
-  if (!account || account.id !== accountId) throw new Error("Coinbase account verification failed.");
+  const legacyResponse = await coinbaseFetch(userId, `/v2/accounts/${encodeURIComponent(accountId)}`);
+  const legacyPayload = await legacyResponse.json().catch(() => ({})) as { data?: CoinbaseAccount };
+  if (legacyResponse.ok && legacyPayload.data?.id === accountId) return legacyPayload.data;
+
+  const advancedResponse = await coinbaseFetch(userId, `/api/v3/brokerage/accounts/${encodeURIComponent(accountId)}`);
+  const advancedPayload = await jsonOrError(advancedResponse, "Coinbase could not verify the selected wallet account.");
+  const account = advancedPayload.account as CoinbaseAccount | undefined;
+  if (!account || account.uuid !== accountId) throw new Error("Coinbase account verification failed.");
   return account;
 }
 

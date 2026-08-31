@@ -2,7 +2,9 @@
 
 ## Implemented
 
-- Owner-scoped Coinbase wallet account listing from `/v2/accounts`.
+- Owner-scoped Coinbase wallet account listing from Advanced Trade, with
+  `/v2/accounts` retained as a compatibility fallback. This handles CDP
+  portfolio keys whose legacy account list is empty.
 - Coinbase deposit-address generation using
   `POST /v2/accounts/:account_id/addresses`.
 - Cross-device database history for generated receive addresses.
